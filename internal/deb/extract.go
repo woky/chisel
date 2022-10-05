@@ -105,9 +105,6 @@ func Extract(pkgReader io.Reader, options *ExtractOptions) (err error) {
 func extractData(dataReader io.Reader, options *ExtractOptions) error {
 
 	shouldExtract := func(pkgPath string) (globPath string, ok bool) {
-		if pkgPath == "" {
-			return "", false
-		}
 		pkgPathIsDir := pkgPath[len(pkgPath)-1] == '/'
 		for extractPath, extractInfos := range options.Extract {
 			if extractPath == "" {
