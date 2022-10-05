@@ -107,9 +107,6 @@ func extractData(dataReader io.Reader, options *ExtractOptions) error {
 	shouldExtract := func(pkgPath string) (globPath string, ok bool) {
 		pkgPathIsDir := pkgPath[len(pkgPath)-1] == '/'
 		for extractPath, extractInfos := range options.Extract {
-			if extractPath == "" {
-				continue
-			}
 			switch {
 			case strings.ContainsAny(extractPath, "*?"):
 				if strdist.GlobPath(extractPath, pkgPath) {
