@@ -423,6 +423,113 @@ var pkgs = map[string][]tarEntry{
 			},
 		},
 	},
+	"copyright-symlink-libssl3": {
+		{
+			header: tar.Header{
+				Name: "./",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/lib/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/lib/x86_64-linux-gnu/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/lib/x86_64-linux-gnu/libssl.so.3",
+				Mode: 00755,
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/share/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/share/doc/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/share/doc/copyright-symlink-libssl3/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/share/doc/copyright-symlink-libssl3/copyright",
+			},
+		},
+	},
+	"copyright-symlink-openssl": {
+		{
+			header: tar.Header{
+				Name: "./",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./etc/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./etc/ssl/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./etc/ssl/openssl.cnf",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/bin/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/bin/openssl",
+				Mode: 00755,
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/share/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/share/doc/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name: "./usr/share/doc/copyright-symlink-openssl/",
+			},
+		},
+		{
+			header: tar.Header{
+				Name:     "./usr/share/doc/copyright-symlink-openssl/copyright",
+				Linkname: "../libssl3/copyright",
+			},
+		},
+	},
 }
 
 //go:embed all:pkgdata
