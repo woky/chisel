@@ -3,6 +3,7 @@ package slicer
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/canonical/chisel/internal/strdist"
 )
@@ -72,16 +73,21 @@ func addGlob(node *_Node, glob string) {
 	}
 }
 
-func insertPath(node *_Node, path string) {
+type _InsertContext struct {
+	parentPath strings.Builder
+}
+
+func insertPath(node *_Node, path string, ctx *_InsertContext) {
 	if path == "" {
 		node.value = true
 		return
 	}
 	edge := node.children[path[0]]
-	// no edge.label shares a common prefix with the path?
+	// If no edge.label shares a common prefix with path...
 	if edge == nil {
 		head, tail, tailIsGlob := splitPath(path)
-		// head can be empty when the path starts with a glob character
+		// head can be empty when path starts with a glob character
+		// ("*" or "?"). In that case, tail is non-empty.
 		if head != "" {
 			newNode := makeNode(!tailIsGlob)
 			node.children[path[0]] = &_Edge{
@@ -92,7 +98,7 @@ func insertPath(node *_Node, path string) {
 		}
 		if tail != "" {
 			if !tailIsGlob {
-				insertPath(node, tail)
+				insertPath(node, tail, ctx)
 			} else {
 				addGlob(node, tail)
 			}
@@ -100,12 +106,12 @@ func insertPath(node *_Node, path string) {
 		return
 	}
 	prefix, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
-	// edge.label is a prefix of the path?
+	// If edge.label is a prefix of path...
 	if edgeSuffix == "" {
-		insertPath(edge.destination, pathSuffix)
+		insertPath(edge.destination, pathSuffix, ctx)
 		return
 	}
-	// edge.label and the path share a common prefix
+	// edge.label and path share a common prefix
 	bridge := makeNode(false)
 	node.children[path[0]] = &_Edge{
 		label:       prefix,
@@ -115,7 +121,7 @@ func insertPath(node *_Node, path string) {
 		label:       edgeSuffix,
 		destination: edge.destination,
 	}
-	insertPath(bridge, pathSuffix)
+	insertPath(bridge, pathSuffix, ctx)
 }
 
 func searchPath(node *_Node, path string) bool {
@@ -173,7 +179,8 @@ func CreatePathSelection() PathSelection {
 }
 
 func (sel *PathSelection) AddPath(path string) {
-	insertPath(sel.root, path)
+	var ctx _InsertContext
+	insertPath(sel.root, path, &ctx)
 }
 
 func (sel *PathSelection) IsPathSelected(path string) bool {
