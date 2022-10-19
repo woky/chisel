@@ -3,13 +3,9 @@ package slicer
 import (
 	"fmt"
 	"sort"
-	"strings"
-)
 
-type PathValue struct {
-	Path  string
-	Value *interface{}
-}
+	"github.com/canonical/chisel/internal/strdist"
+)
 
 type _Edge struct {
 	label       string
@@ -19,6 +15,7 @@ type _Edge struct {
 type _Node struct {
 	value    bool
 	children map[byte]*_Edge
+	globs    []string
 }
 
 func makeNode(value bool) *_Node {
@@ -42,12 +39,37 @@ func longestCommonPrefix(a, b string) (prefix, aSuffix, bSuffix string) {
 	return a[:i], a[i:], b[i:]
 }
 
-func splitPath(path string) (head string, tail string) {
-	i := strings.Index(path, "/")
-	if i < 0 {
-		return path, ""
+func splitPath(path string) (head string, tail string, tailIsGlob bool) {
+	i := 0
+	tailIsGlob = false
+	for ; i < len(path); i++ {
+		if path[i] == '/' {
+			i++
+			break
+		}
+		if path[i] == '*' || path[i] == '?' {
+			tailIsGlob = true
+			break
+		}
 	}
-	return path[:i+1], path[i+1:]
+	head = path[:i]
+	tail = path[i:]
+	return
+}
+
+func addGlob(node *_Node, glob string) {
+	if node.globs == nil {
+		node.globs = make([]string, 1)
+		node.globs[0] = glob
+	} else {
+		// keep in insertion order for "predicatble" matching
+		for _, other := range node.globs {
+			if other == glob {
+				return
+			}
+		}
+		node.globs = append(node.globs, glob)
+	}
 }
 
 func insertPath(node *_Node, path string) {
@@ -55,32 +77,35 @@ func insertPath(node *_Node, path string) {
 		node.value = true
 		return
 	}
-
 	edge := node.children[path[0]]
-
-	// no edge.label shares a common prefix with path?
+	// no edge.label shares a common prefix with the path?
 	if edge == nil {
-		next := makeNode(true)
-		head, tail := splitPath(path)
-		node.children[path[0]] = &_Edge{
-			label:       head,
-			destination: next,
+		head, tail, tailIsGlob := splitPath(path)
+		// head can be empty when the path starts with a glob character
+		if head != "" {
+			newNode := makeNode(!tailIsGlob)
+			node.children[path[0]] = &_Edge{
+				label:       head,
+				destination: newNode,
+			}
+			node = newNode
 		}
 		if tail != "" {
-			insertPath(next, tail)
+			if !tailIsGlob {
+				insertPath(node, tail)
+			} else {
+				addGlob(node, tail)
+			}
 		}
 		return
 	}
-
 	prefix, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
-
-	// edge.label is a prefix of path?
+	// edge.label is a prefix of the path?
 	if edgeSuffix == "" {
 		insertPath(edge.destination, pathSuffix)
 		return
 	}
-
-	// edge.label and path share a common prefix
+	// edge.label and the path share a common prefix
 	bridge := makeNode(false)
 	node.children[path[0]] = &_Edge{
 		label:       prefix,
@@ -94,18 +119,49 @@ func insertPath(node *_Node, path string) {
 }
 
 func searchPath(node *_Node, path string) bool {
+	value := false
 	if path == "" {
-		return node.value
+		value = node.value
+	} else {
+		edge := node.children[path[0]]
+		if edge != nil {
+			_, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
+			if edgeSuffix == "" {
+				next := node.children[path[0]].destination
+				value = searchPath(next, pathSuffix)
+			}
+		}
 	}
-	edge := node.children[path[0]]
-	if edge == nil {
-		return false
+	if !value && node.globs != nil {
+		for _, glob := range node.globs {
+			if strdist.GlobPath(glob, path) {
+				value = true
+				break
+			}
+		}
 	}
-	_, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
-	if edgeSuffix == "" {
-		return searchPath(node.children[path[0]].destination, pathSuffix)
+	return value
+}
+
+func dumpTree(node *_Node, indent int) {
+	for _, glob := range node.globs {
+		fmt.Printf("% *sG %#v\n", indent, "", glob)
 	}
-	return false
+	keys := make([]int, 0, len(node.children))
+	for k := range node.children {
+		keys = append(keys, int(k))
+	}
+	sort.Ints(keys)
+	for _, k := range keys {
+		edge := node.children[byte(k)]
+		next := edge.destination
+		value := '0'
+		if next.value {
+			value = '1'
+		}
+		fmt.Printf("% *s%c <== %#v\n", indent, "", value, edge.label)
+		dumpTree(next, indent+4)
+	}
 }
 
 type PathSelection struct {
@@ -122,26 +178,6 @@ func (sel *PathSelection) AddPath(path string) {
 
 func (sel *PathSelection) IsPathSelected(path string) bool {
 	return searchPath(sel.root, path)
-}
-
-func dumpTree(node *_Node, indent int) {
-	keys := make([]int, 0, len(node.children))
-	for k := range node.children {
-		keys = append(keys, int(k))
-	}
-	sort.Ints(keys)
-	for _, k := range keys {
-		edge := node.children[byte(k)]
-		next := edge.destination
-		fmt.Print(strings.Repeat(" ", indent))
-		if next.value {
-			fmt.Print("1 ")
-		} else {
-			fmt.Print("0 ")
-		}
-		fmt.Println(edge.label)
-		dumpTree(next, indent+4)
-	}
 }
 
 func (sel *PathSelection) DumpTree() {

@@ -104,3 +104,45 @@ func (s *S) TestPathSelectionFewPaths(c *C) {
 	c.Assert(sel.IsPathSelected("/a/bbb"), Equals, false)
 	c.Assert(sel.IsPathSelected("/a/bbbb/"), Equals, false)
 }
+
+func (s *S) TestPathSelectionGlobs(c *C) {
+	sel := slicer.CreatePathSelection()
+
+	sel.AddPath("/foo*")
+
+	c.Assert(sel.IsPathSelected("/"), Equals, true)
+	c.Assert(sel.IsPathSelected("/fo"), Equals, false)
+	c.Assert(sel.IsPathSelected("/foo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/fooo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/foo/"), Equals, false)
+	c.Assert(sel.IsPathSelected("/fooo/"), Equals, false)
+
+	sel.AddPath("/fo*")
+
+	c.Assert(sel.IsPathSelected("/fo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/foo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/fooo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/fo/"), Equals, false)
+	c.Assert(sel.IsPathSelected("/foo/"), Equals, false)
+	c.Assert(sel.IsPathSelected("/fooo/"), Equals, false)
+
+	sel.AddPath("/foo")
+
+	c.Assert(sel.IsPathSelected("/fo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/foo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/fooo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/fo/"), Equals, false)
+	c.Assert(sel.IsPathSelected("/foo/"), Equals, false)
+	c.Assert(sel.IsPathSelected("/fooo/"), Equals, false)
+
+	sel.AddPath("/fo/bar")
+
+	c.Assert(sel.IsPathSelected("/fo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/foo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/fooo"), Equals, true)
+	c.Assert(sel.IsPathSelected("/fo/"), Equals, true)
+	c.Assert(sel.IsPathSelected("/foo/"), Equals, false)
+	c.Assert(sel.IsPathSelected("/fooo/"), Equals, false)
+
+	//sel.DumpTree()
+}
