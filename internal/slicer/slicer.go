@@ -15,7 +15,6 @@ import (
 	"github.com/canonical/chisel/internal/fsutil"
 	"github.com/canonical/chisel/internal/scripts"
 	"github.com/canonical/chisel/internal/setup"
-	"github.com/canonical/chisel/internal/strdist"
 )
 
 type RunOptions struct {
@@ -198,6 +197,11 @@ func Run(options *RunOptions) error {
 		}
 	}
 
+	pathSelection := CreatePathSelection[bool, any]()
+	for targetPath := range pathInfos {
+		pathSelection.AddPath(targetPath)
+	}
+
 	// Run mutation scripts. Order is fundamental here as
 	// dependencies must run before dependents.
 	checkWrite := func(path string) error {
@@ -207,12 +211,7 @@ func Run(options *RunOptions) error {
 		return nil
 	}
 	checkRead := func(path string) error {
-		if _, ok := pathInfos[path]; !ok {
-			for globPath := range globbedPaths {
-				if strdist.GlobPath(globPath, path) {
-					return nil
-				}
-			}
+		if !pathSelection.ContainsPath(path) {
 			return fmt.Errorf("cannot read file which is not selected: %s", path)
 		}
 		return nil
