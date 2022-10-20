@@ -46,68 +46,68 @@ func (s *S) TestLongestCommonPrefix(c *C) {
 	c.Assert(bSuffix, Equals, "")
 }
 
-func (s *S) TestStripLeadingSeparator(c *C) {
+func (s *S) TestStripLeadingEmptyPath(c *C) {
 	var result string
 	var err error
 
-	result, err = slicer.StripLeadingSeparator("abc")
+	result, err = slicer.StripLeadingEmptyPath("abc")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "abc")
 
-	result, err = slicer.StripLeadingSeparator("a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("a/b/c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a/b/c")
 
-	result, err = slicer.StripLeadingSeparator("/a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("/a/b/c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a/b/c")
 
-	result, err = slicer.StripLeadingSeparator("./a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("./a/b/c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a/b/c")
 
-	result, err = slicer.StripLeadingSeparator("/./a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("/./a/b/c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a/b/c")
 
-	result, err = slicer.StripLeadingSeparator("//a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("//a/b/c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a/b/c")
 
-	result, err = slicer.StripLeadingSeparator("/////a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("/////a/b/c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a/b/c")
 
-	result, err = slicer.StripLeadingSeparator("./././a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("./././a/b/c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a/b/c")
 
-	result, err = slicer.StripLeadingSeparator("/./././a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("/./././a/b/c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a/b/c")
 
-	result, err = slicer.StripLeadingSeparator(".//.///././/a/b/c")
+	result, err = slicer.StripLeadingEmptyPath(".//.///././/a/b/c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a/b/c")
 
-	result, err = slicer.StripLeadingSeparator("./a/./b/c")
+	result, err = slicer.StripLeadingEmptyPath("./a/./b/c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a/./b/c")
 
-	result, err = slicer.StripLeadingSeparator("a///b/./c")
+	result, err = slicer.StripLeadingEmptyPath("a///b/./c")
 	c.Assert(err, IsNil)
 	c.Assert(result, Equals, "a///b/./c")
 
-	result, err = slicer.StripLeadingSeparator("../a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("../a/b/c")
 	c.Assert(err, NotNil)
 
-	result, err = slicer.StripLeadingSeparator("/../a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("/../a/b/c")
 	c.Assert(err, NotNil)
 
-	result, err = slicer.StripLeadingSeparator("././//./.././a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("././//./.././a/b/c")
 	c.Assert(err, NotNil)
 
-	result, err = slicer.StripLeadingSeparator("////../a/b/c")
+	result, err = slicer.StripLeadingEmptyPath("////../a/b/c")
 	c.Assert(err, NotNil)
 }
 

@@ -1,4 +1,4 @@
 package slicer
 
 var LongestCommonPrefix = longestCommonPrefix
-var StripLeadingSeparator = stripLeadingSeparator
+var StripLeadingEmptyPath = stripLeadingEmptyPath

@@ -83,7 +83,7 @@ func splitPath(path string) (head string, tail string, tailIsGlob bool) {
 	return
 }
 
-func stripLeadingSeparator(path string) (string, error) {
+func stripLeadingEmptyPath(path string) (string, error) {
 	i := 0
 	for i < len(path) {
 		c := path[i]
