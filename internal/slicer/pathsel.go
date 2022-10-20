@@ -8,7 +8,11 @@ import (
 )
 
 type PathSelection[U any, A any] struct {
-	root *_Node[U]
+	root                   *_Node[U]
+	UserDataInit           func(value *PathValue[U], arg A)
+	UserDataUpdate         func(value *PathValue[U], arg A)
+	ImplicitUserDataInit   func(value *PathValue[U], arg A)
+	ImplicitUserDataUpdate func(value *PathValue[U], arg A)
 }
 
 type PathValue[U any] struct {
@@ -73,12 +77,29 @@ func splitPath(path string) (head string, tail string, tailIsGlob bool) {
 	return
 }
 
-type _InsertContext struct {
+type _InsertContext[A any] struct {
 	origPath       string
 	origPathOffset int
+	arg            A
 }
 
-func (sel *PathSelection[U, _]) addGlob(node *_Node[U], glob string, ctx *_InsertContext) {
+func (sel *PathSelection[U, A]) userDataInitUpdate(value *PathValue[U], arg A, init bool, implicit bool) {
+	initFunc := sel.UserDataInit
+	updateFunc := sel.UserDataUpdate
+	if implicit {
+		initFunc = sel.ImplicitUserDataInit
+		updateFunc = sel.ImplicitUserDataUpdate
+	} else {
+	}
+	if init && initFunc != nil {
+		initFunc(value, arg)
+	}
+	if updateFunc != nil {
+		updateFunc(value, arg)
+	}
+}
+
+func (sel *PathSelection[U, A]) addGlob(node *_Node[U], glob string, ctx *_InsertContext[A]) {
 	entry := &_GlobEntry[U]{
 		glob: glob,
 		value: PathValue[U]{
@@ -87,23 +108,30 @@ func (sel *PathSelection[U, _]) addGlob(node *_Node[U], glob string, ctx *_Inser
 		},
 	}
 	if node.globs == nil {
-		node.globs = make([]*_GlobEntry[U], 1)
-		node.globs[0] = entry
+		node.globs = make([]*_GlobEntry[U], 0, 1)
 	} else {
-		// keep in insertion order for "predicatble" matching
 		for _, otherEntry := range node.globs {
-			if entry.glob == otherEntry.glob {
+			if otherEntry.glob == entry.glob {
+				sel.userDataInitUpdate(&otherEntry.value, ctx.arg, false, false)
 				return
 			}
 		}
-		node.globs = append(node.globs, entry)
 	}
+	// keep in insertion order for "predicatble" matching
+	node.globs = append(node.globs, entry)
+	sel.userDataInitUpdate(&entry.value, ctx.arg, true, false)
 }
 
-func (sel *PathSelection[U, _]) insertPath(node *_Node[U], path string, ctx *_InsertContext) {
+func (sel *PathSelection[U, A]) insertPath(node *_Node[U], path string, ctx *_InsertContext[A]) {
 	if path == "" {
-		node.value = &PathValue[U]{
-			Path: ctx.origPath[0:ctx.origPathOffset],
+		if node.value != nil {
+			if node.value.Implicit {
+				node.value.Implicit = false
+			}
+			sel.userDataInitUpdate(node.value, ctx.arg, false, false)
+		} else {
+			node.value = &PathValue[U]{Path: ctx.origPath[0:ctx.origPathOffset]}
+			sel.userDataInitUpdate(node.value, ctx.arg, true, false)
 		}
 		return
 	}
@@ -121,6 +149,7 @@ func (sel *PathSelection[U, _]) insertPath(node *_Node[U], path string, ctx *_In
 					Path:     ctx.origPath[0:ctx.origPathOffset],
 					Implicit: tail != "",
 				}
+				sel.userDataInitUpdate(value, ctx.arg, true, true)
 			}
 			newNode := makeNode(value)
 			node.children[path[0]] = &_Edge[U]{
@@ -142,6 +171,9 @@ func (sel *PathSelection[U, _]) insertPath(node *_Node[U], path string, ctx *_In
 	ctx.origPathOffset += len(prefix)
 	// If edge.label is a prefix of path...
 	if edgeSuffix == "" {
+		if edge.label[len(edge.label)-1] == '/' {
+			sel.userDataInitUpdate(edge.destination.value, ctx.arg, true, true)
+		}
 		sel.insertPath(edge.destination, pathSuffix, ctx)
 		return
 	}
@@ -209,7 +241,7 @@ func CreatePathSelection[U any, A any]() PathSelection[U, A] {
 }
 
 func (sel *PathSelection[U, A]) AddPath(path string) {
-	ctx := _InsertContext{origPath: path}
+	ctx := _InsertContext[A]{origPath: path}
 	sel.insertPath(sel.root, path, &ctx)
 }
 
