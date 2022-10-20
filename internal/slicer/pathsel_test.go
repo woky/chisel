@@ -46,10 +46,75 @@ func (s *S) TestLongestCommonPrefix(c *C) {
 	c.Assert(bSuffix, Equals, "")
 }
 
+func (s *S) TestStripLeadingSeparator(c *C) {
+	var result string
+	var err error
+
+	result, err = slicer.StripLeadingSeparator("abc")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "abc")
+
+	result, err = slicer.StripLeadingSeparator("a/b/c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a/b/c")
+
+	result, err = slicer.StripLeadingSeparator("/a/b/c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a/b/c")
+
+	result, err = slicer.StripLeadingSeparator("./a/b/c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a/b/c")
+
+	result, err = slicer.StripLeadingSeparator("/./a/b/c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a/b/c")
+
+	result, err = slicer.StripLeadingSeparator("//a/b/c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a/b/c")
+
+	result, err = slicer.StripLeadingSeparator("/////a/b/c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a/b/c")
+
+	result, err = slicer.StripLeadingSeparator("./././a/b/c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a/b/c")
+
+	result, err = slicer.StripLeadingSeparator("/./././a/b/c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a/b/c")
+
+	result, err = slicer.StripLeadingSeparator(".//.///././/a/b/c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a/b/c")
+
+	result, err = slicer.StripLeadingSeparator("./a/./b/c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a/./b/c")
+
+	result, err = slicer.StripLeadingSeparator("a///b/./c")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "a///b/./c")
+
+	result, err = slicer.StripLeadingSeparator("../a/b/c")
+	c.Assert(err, NotNil)
+
+	result, err = slicer.StripLeadingSeparator("/../a/b/c")
+	c.Assert(err, NotNil)
+
+	result, err = slicer.StripLeadingSeparator("././//./.././a/b/c")
+	c.Assert(err, NotNil)
+
+	result, err = slicer.StripLeadingSeparator("////../a/b/c")
+	c.Assert(err, NotNil)
+}
+
 func (s *S) TestPathSelectionSinglePath(c *C) {
 	sel := slicer.CreatePathSelection[bool, any]()
 
-	sel.AddPath("/var/log/messages")
+	sel.AddPath("/var/log/messages", nil)
 
 	c.Assert(sel.ContainsPath("/"), Equals, true)
 	c.Assert(sel.ContainsPath("/var/"), Equals, true)
@@ -72,12 +137,11 @@ func (s *S) TestPathSelectionSinglePath(c *C) {
 func (s *S) TestPathSelectionFewPaths(c *C) {
 	sel := slicer.CreatePathSelection[bool, any]()
 
-	sel.AddPath("/a/b/c1/d/")
-	sel.AddPath("/a/b/c1/d/e")
-	sel.AddPath("/a/bbb/c/d/")
-	sel.AddPath("/a/b/c1/d/eee")
-	sel.AddPath("/a/b/c2/d/e")
-	//sel.DumpTree()
+	sel.AddPath("/a/b/c1/d/", nil)
+	sel.AddPath("/a/b/c1/d/e", nil)
+	sel.AddPath("/a/bbb/c/d/", nil)
+	sel.AddPath("/a/b/c1/d/eee", nil)
+	sel.AddPath("/a/b/c2/d/e", nil)
 
 	c.Assert(sel.ContainsPath("/"), Equals, true)
 	c.Assert(sel.ContainsPath("/a/"), Equals, true)
@@ -108,7 +172,7 @@ func (s *S) TestPathSelectionFewPaths(c *C) {
 func (s *S) TestPathSelectionGlobs(c *C) {
 	sel := slicer.CreatePathSelection[bool, any]()
 
-	sel.AddPath("/foo*")
+	sel.AddPath("/foo*", nil)
 
 	c.Assert(sel.ContainsPath("/"), Equals, true)
 	c.Assert(sel.ContainsPath("/fo"), Equals, false)
@@ -117,7 +181,7 @@ func (s *S) TestPathSelectionGlobs(c *C) {
 	c.Assert(sel.ContainsPath("/foo/"), Equals, false)
 	c.Assert(sel.ContainsPath("/fooo/"), Equals, false)
 
-	sel.AddPath("/fo*")
+	sel.AddPath("/fo*", nil)
 
 	c.Assert(sel.ContainsPath("/fo"), Equals, true)
 	c.Assert(sel.ContainsPath("/foo"), Equals, true)
@@ -126,7 +190,7 @@ func (s *S) TestPathSelectionGlobs(c *C) {
 	c.Assert(sel.ContainsPath("/foo/"), Equals, false)
 	c.Assert(sel.ContainsPath("/fooo/"), Equals, false)
 
-	sel.AddPath("/foo")
+	sel.AddPath("/foo", nil)
 
 	c.Assert(sel.ContainsPath("/fo"), Equals, true)
 	c.Assert(sel.ContainsPath("/foo"), Equals, true)
@@ -135,7 +199,7 @@ func (s *S) TestPathSelectionGlobs(c *C) {
 	c.Assert(sel.ContainsPath("/foo/"), Equals, false)
 	c.Assert(sel.ContainsPath("/fooo/"), Equals, false)
 
-	sel.AddPath("/fo/bar")
+	sel.AddPath("/fo/bar", nil)
 
 	c.Assert(sel.ContainsPath("/fo"), Equals, true)
 	c.Assert(sel.ContainsPath("/foo"), Equals, true)
@@ -143,15 +207,13 @@ func (s *S) TestPathSelectionGlobs(c *C) {
 	c.Assert(sel.ContainsPath("/fo/"), Equals, true)
 	c.Assert(sel.ContainsPath("/foo/"), Equals, false)
 	c.Assert(sel.ContainsPath("/fooo/"), Equals, false)
-
-	//sel.DumpTree()
 }
 
-func (s *S) TestePathSelectionFindPath(c *C) {
+func (s *S) TestPathSelectionFindPath(c *C) {
 	sel := slicer.CreatePathSelection[bool, any]()
 	var value *slicer.PathValue[bool]
 
-	sel.AddPath("/a/b/c")
+	sel.AddPath("/a/b/c", nil)
 
 	value = sel.FindPath("/")
 	c.Assert(value, NotNil)
@@ -173,8 +235,8 @@ func (s *S) TestePathSelectionFindPath(c *C) {
 	c.Assert(value.Path, Equals, "/a/b/c")
 	c.Assert(value.Implicit, Equals, false)
 
-	sel.AddPath("/a/b/cc/")
-	sel.AddPath("/a/bb/c")
+	sel.AddPath("/a/b/cc/", nil)
+	sel.AddPath("/a/bb/c", nil)
 
 	value = sel.FindPath("/a/b/cc/")
 	c.Assert(value, NotNil)
@@ -202,8 +264,8 @@ func (s *S) TestePathSelectionFindPath(c *C) {
 	c.Assert(sel.FindPath("/a/b/c/"), IsNil)
 	c.Assert(sel.FindPath("/zzz"), IsNil)
 
-	sel.AddPath("/a/b*")
-	sel.AddPath("/a/bbb")
+	sel.AddPath("/a/b*", nil)
+	sel.AddPath("/a/bbb", nil)
 
 	value = sel.FindPath("/a/bbb")
 	c.Assert(value, NotNil)
@@ -231,7 +293,7 @@ func (s *S) TestePathSelectionFindPath(c *C) {
 
 	c.Assert(sel.FindPath("/a/bbbb/"), IsNil)
 
-	sel.AddPath("/a**/b")
+	sel.AddPath("/a**/b", nil)
 
 	value = sel.FindPath("/a/b/")
 	c.Assert(value, NotNil)
@@ -254,3 +316,125 @@ func (s *S) TestePathSelectionFindPath(c *C) {
 	c.Assert(sel.FindPath("/aa/b/"), IsNil)
 	c.Assert(sel.FindPath("/aa/b/c"), IsNil)
 }
+
+func (s *S) TestPathSelectionReturnValue(c *C) {
+	sel := slicer.CreateSimplePathSelection[string]()
+	var value *slicer.PathValue[string]
+
+	value, _ = sel.AddPath("/a/b/c", "A")
+	c.Assert(value, NotNil)
+	c.Assert(value.Path, Equals, "/a/b/c")
+	c.Assert(value.Implicit, Equals, false)
+	c.Assert(value.UserData, Equals, "A")
+
+	value, _ = sel.AddPath("/a/b/c", "B")
+	c.Assert(value, NotNil)
+	c.Assert(value.Path, Equals, "/a/b/c")
+	c.Assert(value.Implicit, Equals, false)
+	c.Assert(value.UserData, Equals, "B")
+
+	sel.UserDataUpdate = nil
+
+	value, _ = sel.AddPath("/a/b/c", "C")
+	c.Assert(value, NotNil)
+	c.Assert(value.Path, Equals, "/a/b/c")
+	c.Assert(value.Implicit, Equals, false)
+	c.Assert(value.UserData, Equals, "B")
+}
+
+func (s *S) TestPathSelectionParent(c *C) {
+	sel := slicer.CreatePathSelection[string, string]()
+	var value *slicer.PathValue[string]
+
+	sel.UserDataInit = func(value *slicer.PathValue[string], arg string) {
+		value.UserData = arg
+	}
+	sel.ImplicitUserDataInit = sel.UserDataInit
+
+	sel.AddPath("/a/b", "A")
+
+	value, _ = sel.AddPath("/x/y/z", "X")
+	c.Assert(value, NotNil)
+	c.Assert(value.Path, Equals, "/x/y/z")
+	c.Assert(value.Implicit, Equals, false)
+	c.Assert(value.UserData, Equals, "X")
+
+	value = value.Parent
+	c.Assert(value, NotNil)
+	c.Assert(value.Path, Equals, "/x/y/")
+	c.Assert(value.Implicit, Equals, true)
+	c.Assert(value.UserData, Equals, "X")
+
+	value = value.Parent
+	c.Assert(value, NotNil)
+	c.Assert(value.Path, Equals, "/x/")
+	c.Assert(value.Implicit, Equals, true)
+	c.Assert(value.UserData, Equals, "X")
+
+	value = value.Parent
+	c.Assert(value, NotNil)
+	c.Assert(value.Path, Equals, "/")
+	c.Assert(value.Implicit, Equals, true)
+	c.Assert(value.UserData, Equals, "A")
+
+	value = value.Parent
+	c.Assert(value, IsNil)
+
+	value, _ = sel.AddPath("/x/y/", "Z")
+	c.Assert(value, NotNil)
+	c.Assert(value.Path, Equals, "/x/y/")
+	c.Assert(value.Implicit, Equals, false)
+	c.Assert(value.UserData, Equals, "X")
+}
+
+func (s *S) TestPathSelectionUserData(c *C) {
+	type PathData struct {
+		initCount           int
+		updateCount         int
+		implicitInitCount   int
+		implicitUpdateCount int
+	}
+	sel := slicer.CreatePathSelection[PathData, int]()
+	var value *slicer.PathValue[PathData]
+
+	sel.UserDataInit = func(value *slicer.PathValue[PathData], i int) {
+		value.UserData.initCount += i
+	}
+	sel.UserDataUpdate = func(value *slicer.PathValue[PathData], i int) {
+		value.UserData.updateCount += i
+	}
+	sel.ImplicitUserDataInit = func(value *slicer.PathValue[PathData], i int) {
+		value.UserData.implicitInitCount += i
+	}
+	sel.ImplicitUserDataUpdate = func(value *slicer.PathValue[PathData], i int) {
+		value.UserData.implicitUpdateCount += i
+	}
+
+	sel.AddPath("/a/b/c", 10)
+	sel.AddPath("/a/b/c/d", 1)
+	sel.AddPath("/a/b/cc/d", 1)
+	sel.AddPath("/a/b/", 1)
+	sel.AddPath("/", 1)
+	sel.AddPath("/a/b/", 1)
+
+	value = sel.FindPath("/")
+	c.Assert(value, NotNil)
+	//c.Assert(value.UserData.initCount, Equals, 0)
+	//c.Assert(value.UserData.updateCount, Equals, 1)
+	//c.Assert(value.UserData.implicitInitCount, Equals, 1)
+	//c.Assert(value.UserData.implicitUpdateCount, Equals, 5)
+}
+
+func (s *S) TestPathSelectionOddities(c *C) {
+	sel := slicer.CreatePathSelection[any, any]()
+
+	sel.AddPath("/foo/bar", nil)
+	sel.AddPath("/foo/bar/", nil)
+	//sel.DumpTree()
+	//c.Assert(true, Equals, false)
+
+	//sel.AddPath("", nil)
+}
+
+// TODO oddities
+// Empty path

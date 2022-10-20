@@ -199,7 +199,7 @@ func Run(options *RunOptions) error {
 
 	pathSelection := CreatePathSelection[bool, any]()
 	for targetPath := range pathInfos {
-		pathSelection.AddPath(targetPath)
+		pathSelection.AddPath(targetPath, nil)
 	}
 
 	// Run mutation scripts. Order is fundamental here as

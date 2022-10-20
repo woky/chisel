@@ -3,6 +3,7 @@ package slicer
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/canonical/chisel/internal/strdist"
 )
@@ -19,6 +20,7 @@ type PathValue[U any] struct {
 	Path       string
 	PathIsGlob bool
 	Implicit   bool
+	Parent     *PathValue[U]
 	UserData   U
 }
 
@@ -77,33 +79,42 @@ func splitPath(path string) (head string, tail string, tailIsGlob bool) {
 	return
 }
 
-type _InsertContext[A any] struct {
-	origPath       string
-	origPathOffset int
-	arg            A
+type _InsertContext[U any, A any] struct {
+	arg      A
+	fullPath strings.Builder
+	parent   *PathValue[U]
 }
 
-func (sel *PathSelection[U, A]) userDataInitUpdate(value *PathValue[U], arg A, init bool, implicit bool) {
-	initFunc := sel.UserDataInit
-	updateFunc := sel.UserDataUpdate
-	if implicit {
-		initFunc = sel.ImplicitUserDataInit
-		updateFunc = sel.ImplicitUserDataUpdate
-	} else {
-	}
-	if init && initFunc != nil {
-		initFunc(value, arg)
-	}
-	if updateFunc != nil {
-		updateFunc(value, arg)
+func (sel *PathSelection[U, A]) userDataInit(value *PathValue[U], arg A) {
+	if sel.UserDataInit != nil {
+		sel.UserDataInit(value, arg)
 	}
 }
 
-func (sel *PathSelection[U, A]) addGlob(node *_Node[U], glob string, ctx *_InsertContext[A]) {
+func (sel *PathSelection[U, A]) userDataUpdate(value *PathValue[U], arg A) {
+	if sel.UserDataUpdate != nil {
+		sel.UserDataUpdate(value, arg)
+	}
+}
+
+func (sel *PathSelection[U, A]) implicitUserDataInit(value *PathValue[U], arg A) {
+	if sel.ImplicitUserDataInit != nil {
+		sel.ImplicitUserDataInit(value, arg)
+	}
+}
+
+func (sel *PathSelection[U, A]) implicitUserDataUpdate(value *PathValue[U], arg A) {
+	if sel.ImplicitUserDataUpdate != nil {
+		sel.ImplicitUserDataUpdate(value, arg)
+	}
+}
+
+func (sel *PathSelection[U, A]) addGlob(node *_Node[U], glob string, ctx *_InsertContext[U, A]) *PathValue[U] {
+	ctx.fullPath.WriteString(glob)
 	entry := &_GlobEntry[U]{
 		glob: glob,
 		value: PathValue[U]{
-			Path:       ctx.origPath,
+			Path:       ctx.fullPath.String(),
 			PathIsGlob: true,
 		},
 	}
@@ -112,45 +123,95 @@ func (sel *PathSelection[U, A]) addGlob(node *_Node[U], glob string, ctx *_Inser
 	} else {
 		for _, otherEntry := range node.globs {
 			if otherEntry.glob == entry.glob {
-				sel.userDataInitUpdate(&otherEntry.value, ctx.arg, false, false)
-				return
+				sel.userDataUpdate(&otherEntry.value, ctx.arg)
+				return &otherEntry.value
 			}
 		}
 	}
 	// keep in insertion order for "predicatble" matching
 	node.globs = append(node.globs, entry)
-	sel.userDataInitUpdate(&entry.value, ctx.arg, true, false)
+	sel.userDataInit(&entry.value, ctx.arg)
+	sel.userDataUpdate(&entry.value, ctx.arg)
+	return &entry.value
 }
 
-func (sel *PathSelection[U, A]) insertPath(node *_Node[U], path string, ctx *_InsertContext[A]) {
-	if path == "" {
-		if node.value != nil {
-			if node.value.Implicit {
-				node.value.Implicit = false
-			}
-			sel.userDataInitUpdate(node.value, ctx.arg, false, false)
-		} else {
-			node.value = &PathValue[U]{Path: ctx.origPath[0:ctx.origPathOffset]}
-			sel.userDataInitUpdate(node.value, ctx.arg, true, false)
+func stripLeadingSeparator(path string) (string, error) {
+	i := 0
+	for i < len(path) {
+		c := path[i]
+		if c == '/' {
+			i++
+			continue
 		}
-		return
+		if c == '.' {
+			j := i + 1
+			if j < len(path) {
+				c := path[j]
+				j++
+				if c == '.' {
+					if j == len(path) || path[j] == '/' {
+						return "", fmt.Errorf("double dot pahts (../) are not supported")
+					}
+					break
+				}
+				if c == '/' {
+					i = j
+					continue
+				}
+			}
+		}
+		break
 	}
+	return path[i:], nil
+}
+
+func (sel *PathSelection[U, A]) insertPath(node *_Node[U], path string, ctx *_InsertContext[U, A]) *PathValue[U] {
+	if path == "" {
+		if node.value == nil {
+			node.value = &PathValue[U]{
+				Path:   ctx.fullPath.String(),
+				Parent: ctx.parent,
+			}
+		} else if node.value.Implicit {
+			node.value.Implicit = false
+		}
+		sel.userDataUpdate(node.value, ctx.arg)
+		return node.value
+	}
+
+	if node.value != nil {
+		sel.implicitUserDataUpdate(node.value, ctx.arg)
+		ctx.parent = node.value
+	}
+
 	edge := node.children[path[0]]
+
 	// If no edge.label shares a common prefix with path...
 	if edge == nil {
 		head, tail, tailIsGlob := splitPath(path)
+
 		// head can be empty when path starts with a glob character
 		// ("*" or "?"). In that case, tail is non-empty.
 		if head != "" {
 			var value *PathValue[U]
+
 			if !tailIsGlob {
-				ctx.origPathOffset += len(head)
+				ctx.fullPath.WriteString(head)
 				value = &PathValue[U]{
-					Path:     ctx.origPath[0:ctx.origPathOffset],
-					Implicit: tail != "",
+					Path:   ctx.fullPath.String(),
+					Parent: ctx.parent,
 				}
-				sel.userDataInitUpdate(value, ctx.arg, true, true)
+				if tail == "" {
+					sel.userDataInit(value, ctx.arg)
+					sel.userDataUpdate(value, ctx.arg)
+				} else {
+					sel.implicitUserDataInit(value, ctx.arg)
+					sel.implicitUserDataUpdate(value, ctx.arg)
+					value.Implicit = true
+					ctx.parent = value
+				}
 			}
+
 			newNode := makeNode(value)
 			node.children[path[0]] = &_Edge[U]{
 				label:       head,
@@ -158,25 +219,24 @@ func (sel *PathSelection[U, A]) insertPath(node *_Node[U], path string, ctx *_In
 			}
 			node = newNode
 		}
+
 		if tail != "" {
-			if !tailIsGlob {
-				sel.insertPath(node, tail, ctx)
-			} else {
-				sel.addGlob(node, tail, ctx)
+			if tailIsGlob {
+				return sel.addGlob(node, tail, ctx)
 			}
+			return sel.insertPath(node, tail, ctx)
 		}
-		return
+		return node.value
 	}
+
 	prefix, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
-	ctx.origPathOffset += len(prefix)
+	ctx.fullPath.WriteString(prefix)
+
 	// If edge.label is a prefix of path...
 	if edgeSuffix == "" {
-		if edge.label[len(edge.label)-1] == '/' {
-			sel.userDataInitUpdate(edge.destination.value, ctx.arg, true, true)
-		}
-		sel.insertPath(edge.destination, pathSuffix, ctx)
-		return
+		return sel.insertPath(edge.destination, pathSuffix, ctx)
 	}
+
 	// Else, edge.label and path share a common prefix.
 	bridge := makeNode[U](nil)
 	node.children[path[0]] = &_Edge[U]{
@@ -187,16 +247,16 @@ func (sel *PathSelection[U, A]) insertPath(node *_Node[U], path string, ctx *_In
 		label:       edgeSuffix,
 		destination: edge.destination,
 	}
-	sel.insertPath(bridge, pathSuffix, ctx)
+	return sel.insertPath(bridge, pathSuffix, ctx)
 }
 
 func (sel *PathSelection[U, _]) searchPath(node *_Node[U], path string) *PathValue[U] {
 	var value *PathValue[U]
+
 	if path == "" {
 		value = node.value
 	} else {
-		edge := node.children[path[0]]
-		if edge != nil {
+		if edge, ok := node.children[path[0]]; ok {
 			_, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
 			if edgeSuffix == "" {
 				next := node.children[path[0]].destination
@@ -204,6 +264,7 @@ func (sel *PathSelection[U, _]) searchPath(node *_Node[U], path string) *PathVal
 			}
 		}
 	}
+
 	if value == nil && node.globs != nil {
 		for _, globEntry := range node.globs {
 			if strdist.GlobPath(globEntry.glob, path) {
@@ -212,6 +273,7 @@ func (sel *PathSelection[U, _]) searchPath(node *_Node[U], path string) *PathVal
 			}
 		}
 	}
+
 	return value
 }
 
@@ -236,13 +298,23 @@ func (sel *PathSelection[U, _]) dumpTree(node *_Node[U], indent int) {
 	}
 }
 
+func CreateSimplePathSelection[U any]() PathSelection[U, U] {
+	return PathSelection[U, U]{
+		root:           makeNode[U](nil),
+		UserDataUpdate: func(value *PathValue[U], arg U) { value.UserData = arg },
+	}
+}
+
 func CreatePathSelection[U any, A any]() PathSelection[U, A] {
 	return PathSelection[U, A]{root: makeNode[U](nil)}
 }
 
-func (sel *PathSelection[U, A]) AddPath(path string) {
-	ctx := _InsertContext[A]{origPath: path}
-	sel.insertPath(sel.root, path, &ctx)
+func (sel *PathSelection[U, A]) AddPath(path string, arg A) (*PathValue[U], error) {
+	if path == "" {
+		return nil, fmt.Errorf("path is empty")
+	}
+	ctx := _InsertContext[U, A]{arg: arg}
+	return sel.insertPath(sel.root, path, &ctx), nil
 }
 
 func (sel *PathSelection[U, _]) FindPath(path string) *PathValue[U] {
