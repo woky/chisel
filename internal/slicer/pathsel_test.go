@@ -149,7 +149,7 @@ func (s *S) TestPathSelectionGlobs(c *C) {
 
 func (s *S) TestePathSelectionFindPath(c *C) {
 	sel := slicer.CreatePathSelection[bool, any]()
-	var value *slicer.NodePathInfo
+	var value *slicer.PathValue[bool]
 
 	sel.AddPath("/a/b/c")
 

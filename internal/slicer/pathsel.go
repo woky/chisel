@@ -7,32 +7,37 @@ import (
 	"github.com/canonical/chisel/internal/strdist"
 )
 
-type NodePathInfo struct {
+type PathSelection[U any, A any] struct {
+	root *_Node[U]
+}
+
+type PathValue[U any] struct {
 	Path       string
 	PathIsGlob bool
 	Implicit   bool
+	UserData   U
 }
 
-type _GlobEntry struct {
+type _GlobEntry[U any] struct {
 	glob  string
-	value NodePathInfo
+	value PathValue[U]
 }
 
-type _Edge struct {
+type _Edge[U any] struct {
 	label       string
-	destination *_Node
+	destination *_Node[U]
 }
 
-type _Node struct {
-	value    *NodePathInfo
-	children map[byte]*_Edge
-	globs    []*_GlobEntry
+type _Node[U any] struct {
+	value    *PathValue[U]
+	children map[byte]*_Edge[U]
+	globs    []*_GlobEntry[U]
 }
 
-func makeNode(value *NodePathInfo) *_Node {
-	return &_Node{
+func makeNode[U any](value *PathValue[U]) *_Node[U] {
+	return &_Node[U]{
 		value:    value,
-		children: make(map[byte]*_Edge),
+		children: make(map[byte]*_Edge[U]),
 	}
 }
 
@@ -73,16 +78,16 @@ type _InsertContext struct {
 	origPathOffset int
 }
 
-func addGlob(node *_Node, glob string, ctx *_InsertContext) {
-	entry := &_GlobEntry{
+func (sel *PathSelection[U, _]) addGlob(node *_Node[U], glob string, ctx *_InsertContext) {
+	entry := &_GlobEntry[U]{
 		glob: glob,
-		value: NodePathInfo{
+		value: PathValue[U]{
 			Path:       ctx.origPath,
 			PathIsGlob: true,
 		},
 	}
 	if node.globs == nil {
-		node.globs = make([]*_GlobEntry, 1)
+		node.globs = make([]*_GlobEntry[U], 1)
 		node.globs[0] = entry
 	} else {
 		// keep in insertion order for "predicatble" matching
@@ -95,9 +100,9 @@ func addGlob(node *_Node, glob string, ctx *_InsertContext) {
 	}
 }
 
-func insertPath(node *_Node, path string, ctx *_InsertContext) {
+func (sel *PathSelection[U, _]) insertPath(node *_Node[U], path string, ctx *_InsertContext) {
 	if path == "" {
-		node.value = &NodePathInfo{
+		node.value = &PathValue[U]{
 			Path: ctx.origPath[0:ctx.origPathOffset],
 		}
 		return
@@ -109,16 +114,16 @@ func insertPath(node *_Node, path string, ctx *_InsertContext) {
 		// head can be empty when path starts with a glob character
 		// ("*" or "?"). In that case, tail is non-empty.
 		if head != "" {
-			var value *NodePathInfo
+			var value *PathValue[U]
 			if !tailIsGlob {
 				ctx.origPathOffset += len(head)
-				value = &NodePathInfo{
+				value = &PathValue[U]{
 					Path:     ctx.origPath[0:ctx.origPathOffset],
 					Implicit: tail != "",
 				}
 			}
 			newNode := makeNode(value)
-			node.children[path[0]] = &_Edge{
+			node.children[path[0]] = &_Edge[U]{
 				label:       head,
 				destination: newNode,
 			}
@@ -126,9 +131,9 @@ func insertPath(node *_Node, path string, ctx *_InsertContext) {
 		}
 		if tail != "" {
 			if !tailIsGlob {
-				insertPath(node, tail, ctx)
+				sel.insertPath(node, tail, ctx)
 			} else {
-				addGlob(node, tail, ctx)
+				sel.addGlob(node, tail, ctx)
 			}
 		}
 		return
@@ -137,24 +142,24 @@ func insertPath(node *_Node, path string, ctx *_InsertContext) {
 	ctx.origPathOffset += len(prefix)
 	// If edge.label is a prefix of path...
 	if edgeSuffix == "" {
-		insertPath(edge.destination, pathSuffix, ctx)
+		sel.insertPath(edge.destination, pathSuffix, ctx)
 		return
 	}
 	// Else, edge.label and path share a common prefix.
-	bridge := makeNode(nil)
-	node.children[path[0]] = &_Edge{
+	bridge := makeNode[U](nil)
+	node.children[path[0]] = &_Edge[U]{
 		label:       prefix,
 		destination: bridge,
 	}
-	bridge.children[edgeSuffix[0]] = &_Edge{
+	bridge.children[edgeSuffix[0]] = &_Edge[U]{
 		label:       edgeSuffix,
 		destination: edge.destination,
 	}
-	insertPath(bridge, pathSuffix, ctx)
+	sel.insertPath(bridge, pathSuffix, ctx)
 }
 
-func searchPath(node *_Node, path string) *NodePathInfo {
-	var value *NodePathInfo
+func (sel *PathSelection[U, _]) searchPath(node *_Node[U], path string) *PathValue[U] {
+	var value *PathValue[U]
 	if path == "" {
 		value = node.value
 	} else {
@@ -163,7 +168,7 @@ func searchPath(node *_Node, path string) *NodePathInfo {
 			_, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
 			if edgeSuffix == "" {
 				next := node.children[path[0]].destination
-				value = searchPath(next, pathSuffix)
+				value = sel.searchPath(next, pathSuffix)
 			}
 		}
 	}
@@ -178,7 +183,7 @@ func searchPath(node *_Node, path string) *NodePathInfo {
 	return value
 }
 
-func dumpTree(node *_Node, indent int) {
+func (sel *PathSelection[U, _]) dumpTree(node *_Node[U], indent int) {
 	for _, glob := range node.globs {
 		fmt.Printf("% *sG %#v\n", indent, "", glob)
 	}
@@ -195,36 +200,27 @@ func dumpTree(node *_Node, indent int) {
 			value = '1'
 		}
 		fmt.Printf("% *s%c <== %#v\n", indent, "", value, edge.label)
-		dumpTree(next, indent+4)
+		sel.dumpTree(next, indent+4)
 	}
 }
 
-type PathSelection[UserData any, UserDataArg any] struct {
-	root *_Node
+func CreatePathSelection[U any, A any]() PathSelection[U, A] {
+	return PathSelection[U, A]{root: makeNode[U](nil)}
 }
 
-type PathValue[UserData any] struct {
-	info *NodePathInfo
-	data UserData
-}
-
-func CreatePathSelection[D any, A any]() PathSelection[D, A] {
-	return PathSelection[D, A]{root: makeNode(nil)}
-}
-
-func (sel *PathSelection[D, A]) AddPath(path string) {
+func (sel *PathSelection[U, A]) AddPath(path string) {
 	ctx := _InsertContext{origPath: path}
-	insertPath(sel.root, path, &ctx)
+	sel.insertPath(sel.root, path, &ctx)
 }
 
-func (sel *PathSelection[D, A]) FindPath(path string) *NodePathInfo {
-	return searchPath(sel.root, path)
+func (sel *PathSelection[U, _]) FindPath(path string) *PathValue[U] {
+	return sel.searchPath(sel.root, path)
 }
 
-func (sel *PathSelection[D, A]) ContainsPath(path string) bool {
+func (sel *PathSelection[_, _]) ContainsPath(path string) bool {
 	return sel.FindPath(path) != nil
 }
 
-func (sel *PathSelection[D, A]) DumpTree() {
-	dumpTree(sel.root, 0)
+func (sel *PathSelection[U, A]) DumpTree() {
+	sel.dumpTree(sel.root, 0)
 }
