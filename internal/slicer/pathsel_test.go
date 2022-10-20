@@ -112,7 +112,8 @@ func (s *S) TestStripLeadingSeparator(c *C) {
 }
 
 func (s *S) TestPathSelectionSinglePath(c *C) {
-	sel := slicer.CreatePathSelection[bool, any]()
+	sel := slicer.PathSelection[bool, any]{}
+	sel.Init()
 
 	sel.AddPath("/var/log/messages", nil)
 
@@ -135,7 +136,8 @@ func (s *S) TestPathSelectionSinglePath(c *C) {
 }
 
 func (s *S) TestPathSelectionFewPaths(c *C) {
-	sel := slicer.CreatePathSelection[bool, any]()
+	sel := slicer.PathSelection[bool, any]{}
+	sel.Init()
 
 	sel.AddPath("/a/b/c1/d/", nil)
 	sel.AddPath("/a/b/c1/d/e", nil)
@@ -170,7 +172,8 @@ func (s *S) TestPathSelectionFewPaths(c *C) {
 }
 
 func (s *S) TestPathSelectionGlobs(c *C) {
-	sel := slicer.CreatePathSelection[bool, any]()
+	sel := slicer.PathSelection[bool, any]{}
+	sel.Init()
 
 	sel.AddPath("/foo*", nil)
 
@@ -210,8 +213,9 @@ func (s *S) TestPathSelectionGlobs(c *C) {
 }
 
 func (s *S) TestPathSelectionFindPath(c *C) {
-	sel := slicer.CreatePathSelection[bool, any]()
 	var value *slicer.PathValue[bool]
+	sel := slicer.PathSelection[bool, any]{}
+	sel.Init()
 
 	sel.AddPath("/a/b/c", nil)
 
@@ -318,8 +322,10 @@ func (s *S) TestPathSelectionFindPath(c *C) {
 }
 
 func (s *S) TestPathSelectionReturnValue(c *C) {
-	sel := slicer.CreateSimplePathSelection[string]()
 	var value *slicer.PathValue[string]
+	sel := slicer.PathSelection[string, string]{}
+	sel.UpdateUserData = slicer.ReplaceUserData[string]
+	sel.Init()
 
 	value, _ = sel.AddPath("/a/b/c", "A")
 	c.Assert(value, NotNil)
@@ -333,7 +339,8 @@ func (s *S) TestPathSelectionReturnValue(c *C) {
 	c.Assert(value.Implicit, Equals, false)
 	c.Assert(value.UserData, Equals, "B")
 
-	sel.UserDataUpdate = nil
+	// modyfing hooks after Init() is unsupported, but test it anyway
+	sel.UpdateUserData = nil
 
 	value, _ = sel.AddPath("/a/b/c", "C")
 	c.Assert(value, NotNil)
@@ -343,13 +350,11 @@ func (s *S) TestPathSelectionReturnValue(c *C) {
 }
 
 func (s *S) TestPathSelectionParent(c *C) {
-	sel := slicer.CreatePathSelection[string, string]()
 	var value *slicer.PathValue[string]
-
-	sel.UserDataInit = func(value *slicer.PathValue[string], arg string) {
-		value.UserData = arg
-	}
-	sel.ImplicitUserDataInit = sel.UserDataInit
+	sel := slicer.PathSelection[string, string]{}
+	sel.UpdateUserData = slicer.ReplaceUserData[string]
+	sel.UpdateImplicitUserData = sel.UpdateUserData
+	sel.Init()
 
 	sel.AddPath("/a/b", "A")
 
@@ -375,7 +380,7 @@ func (s *S) TestPathSelectionParent(c *C) {
 	c.Assert(value, NotNil)
 	c.Assert(value.Path, Equals, "/")
 	c.Assert(value.Implicit, Equals, true)
-	c.Assert(value.UserData, Equals, "A")
+	c.Assert(value.UserData, Equals, "X")
 
 	value = value.Parent
 	c.Assert(value, IsNil)
@@ -384,31 +389,27 @@ func (s *S) TestPathSelectionParent(c *C) {
 	c.Assert(value, NotNil)
 	c.Assert(value.Path, Equals, "/x/y/")
 	c.Assert(value.Implicit, Equals, false)
-	c.Assert(value.UserData, Equals, "X")
+	c.Assert(value.UserData, Equals, "Z")
 }
 
 func (s *S) TestPathSelectionUserData(c *C) {
 	type PathData struct {
 		initCount           int
 		updateCount         int
-		implicitInitCount   int
 		implicitUpdateCount int
 	}
-	sel := slicer.CreatePathSelection[PathData, int]()
 	var value *slicer.PathValue[PathData]
-
-	sel.UserDataInit = func(value *slicer.PathValue[PathData], i int) {
-		value.UserData.initCount += i
+	sel := slicer.PathSelection[PathData, any]{}
+	sel.InitUserData = func(value *slicer.PathValue[PathData]) {
+		value.UserData.initCount += 1
 	}
-	sel.UserDataUpdate = func(value *slicer.PathValue[PathData], i int) {
-		value.UserData.updateCount += i
+	sel.UpdateUserData = func(value *slicer.PathValue[PathData], _ any) {
+		value.UserData.updateCount += 1
 	}
-	sel.ImplicitUserDataInit = func(value *slicer.PathValue[PathData], i int) {
-		value.UserData.implicitInitCount += i
+	sel.UpdateImplicitUserData = func(value *slicer.PathValue[PathData], _ any) {
+		value.UserData.implicitUpdateCount += 1
 	}
-	sel.ImplicitUserDataUpdate = func(value *slicer.PathValue[PathData], i int) {
-		value.UserData.implicitUpdateCount += i
-	}
+	sel.Init()
 
 	sel.AddPath("/a/b/c", 10)
 	sel.AddPath("/a/b/c/d", 1)
@@ -421,12 +422,12 @@ func (s *S) TestPathSelectionUserData(c *C) {
 	c.Assert(value, NotNil)
 	//c.Assert(value.UserData.initCount, Equals, 0)
 	//c.Assert(value.UserData.updateCount, Equals, 1)
-	//c.Assert(value.UserData.implicitInitCount, Equals, 1)
 	//c.Assert(value.UserData.implicitUpdateCount, Equals, 5)
 }
 
 func (s *S) TestPathSelectionOddities(c *C) {
-	sel := slicer.CreatePathSelection[any, any]()
+	sel := slicer.PathSelection[any, any]{}
+	sel.Init()
 
 	sel.AddPath("/foo/bar", nil)
 	sel.AddPath("/foo/bar/", nil)

@@ -197,9 +197,10 @@ func Run(options *RunOptions) error {
 		}
 	}
 
-	pathSelection := CreatePathSelection[bool, any]()
+	sel := PathSelection[bool, any]{}
+	sel.Init()
 	for targetPath := range pathInfos {
-		pathSelection.AddPath(targetPath, nil)
+		sel.AddPath(targetPath, nil)
 	}
 
 	// Run mutation scripts. Order is fundamental here as
@@ -211,7 +212,7 @@ func Run(options *RunOptions) error {
 		return nil
 	}
 	checkRead := func(path string) error {
-		if !pathSelection.ContainsPath(path) {
+		if !sel.ContainsPath(path) {
 			return fmt.Errorf("cannot read file which is not selected: %s", path)
 		}
 		return nil
