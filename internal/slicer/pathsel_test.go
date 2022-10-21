@@ -46,9 +46,17 @@ func (s *S) TestLongestCommonPrefix(c *C) {
 	c.Assert(bSuffix, Equals, "")
 }
 
-func (s *S) TestStripLeadingEmptyPath(c *C) {
+func (s *S) _TestStripLeadingEmptyPath(c *C) {
 	var result string
 	var err error
+
+	result, err = slicer.StripLeadingEmptyPath("/")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "")
+
+	result, err = slicer.StripLeadingEmptyPath("/")
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, "")
 
 	result, err = slicer.StripLeadingEmptyPath("abc")
 	c.Assert(err, IsNil)
@@ -111,7 +119,7 @@ func (s *S) TestStripLeadingEmptyPath(c *C) {
 	c.Assert(err, NotNil)
 }
 
-func (s *S) TestPathSelectionSinglePath(c *C) {
+func (s *S) _TestPathSelectionSinglePath(c *C) {
 	sel := slicer.PathSelection[bool, any]{}
 	sel.Init()
 
@@ -135,7 +143,7 @@ func (s *S) TestPathSelectionSinglePath(c *C) {
 	c.Assert(sel.ContainsPath("/zzz"), Equals, false)
 }
 
-func (s *S) TestPathSelectionFewPaths(c *C) {
+func (s *S) _TestPathSelectionFewPaths(c *C) {
 	sel := slicer.PathSelection[bool, any]{}
 	sel.Init()
 
@@ -171,7 +179,7 @@ func (s *S) TestPathSelectionFewPaths(c *C) {
 	c.Assert(sel.ContainsPath("/a/bbbb/"), Equals, false)
 }
 
-func (s *S) TestPathSelectionGlobs(c *C) {
+func (s *S) _TestPathSelectionGlobs(c *C) {
 	sel := slicer.PathSelection[bool, any]{}
 	sel.Init()
 
@@ -212,7 +220,7 @@ func (s *S) TestPathSelectionGlobs(c *C) {
 	c.Assert(sel.ContainsPath("/fooo/"), Equals, false)
 }
 
-func (s *S) TestPathSelectionFindPath(c *C) {
+func (s *S) _TestPathSelectionFindPath(c *C) {
 	var value *slicer.PathValue[bool]
 	sel := slicer.PathSelection[bool, any]{}
 	sel.Init()
@@ -321,7 +329,7 @@ func (s *S) TestPathSelectionFindPath(c *C) {
 	c.Assert(sel.FindPath("/aa/b/c"), IsNil)
 }
 
-func (s *S) TestPathSelectionReturnValue(c *C) {
+func (s *S) _TestPathSelectionReturnValue(c *C) {
 	var value *slicer.PathValue[string]
 	sel := slicer.PathSelection[string, string]{}
 	sel.UpdateUserData = slicer.ReplaceUserData[string]
@@ -349,7 +357,7 @@ func (s *S) TestPathSelectionReturnValue(c *C) {
 	c.Assert(value.UserData, Equals, "B")
 }
 
-func (s *S) TestPathSelectionParent(c *C) {
+func (s *S) _TestPathSelectionParent(c *C) {
 	var value *slicer.PathValue[string]
 	sel := slicer.PathSelection[string, string]{}
 	sel.UpdateUserData = slicer.ReplaceUserData[string]
@@ -392,7 +400,7 @@ func (s *S) TestPathSelectionParent(c *C) {
 	c.Assert(value.UserData, Equals, "Z")
 }
 
-func (s *S) TestPathSelectionUserData(c *C) {
+func (s *S) _TestPathSelectionUserData(c *C) {
 	type PathData struct {
 		initCount           int
 		updateCount         int
@@ -425,7 +433,7 @@ func (s *S) TestPathSelectionUserData(c *C) {
 	//c.Assert(value.UserData.implicitUpdateCount, Equals, 5)
 }
 
-func (s *S) TestPathSelectionOddities(c *C) {
+func (s *S) _TestPathSelectionOddities(c *C) {
 	sel := slicer.PathSelection[any, any]{}
 	sel.Init()
 
