@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+func ReplaceValue[V any](node *PathNode[V, V], arg V) {
+	node.Value = arg
+}
+
 type PathTree[V any, A any] struct {
 	Root               PathNode[V, A]
 	InitNode           func(node *PathNode[V, A])
@@ -13,15 +17,14 @@ type PathTree[V any, A any] struct {
 	UpdateImplicitNode func(node *PathNode[V, A], arg A)
 }
 
-func ReplaceValue[V any](node *PathNode[V, V], arg V) {
-	node.Value = arg
-}
-
 const (
-	_FL_INTERNAL = 1 << iota
-	_FL_DIRECTORY
-	_FL_IMPLICIT
-	_FL_GLOB
+	PATHNODE_KIND_FILE = iota
+	PATHNODE_KIND_INTERNAL
+	PATHNODE_KIND_DIRECTORY
+	PATHNODE_KIND_GLOB
+)
+const (
+	PATHNODE_FLAG_IMPLICIT = 1 << iota
 )
 
 type PathNode[V any, A any] struct {
@@ -29,7 +32,8 @@ type PathNode[V any, A any] struct {
 	Parent   *PathNode[V, A]
 	Path     string
 	Value    V
-	flags    int
+	Kind     int
+	Flags    int
 	children map[byte]*_Edge[V, A]
 }
 
@@ -38,18 +42,21 @@ type _Edge[V any, A any] struct {
 	target *PathNode[V, A]
 }
 
-func longestCommonPrefix(a, b string) (prefix, aSuffix, bSuffix string) {
+func longestCommonPrefix(a, b string) (prefix, aSuffix, bSuffix string, slash bool) {
 	limit := len(a)
 	if len(b) < limit {
 		limit = len(b)
 	}
 	i := 0
 	for ; i < limit; i++ {
+		if a[i] == '/' {
+			slash = true
+		}
 		if a[i] != b[i] {
 			break
 		}
 	}
-	return a[:i], a[i:], b[i:]
+	return a[:i], a[i:], b[i:], true
 }
 
 func cleanPathPrefix(path string) (string, error) {
@@ -114,15 +121,6 @@ func splitPath(path string) (head string, tail string, tailIsGlob bool) {
 	return
 }
 
-func (sel *PathTree[V, A]) Init() {
-	sel.Root.Tree = sel
-	sel.Root.flags = _FL_DIRECTORY | _FL_IMPLICIT
-	sel.Root.children = make(map[byte]*_Edge[V, A])
-	if sel.InitNode != nil {
-		sel.InitNode(&sel.Root)
-	}
-}
-
 func (node *PathNode[V, _]) initNode() {
 	if node.Tree.InitNode != nil {
 		node.Tree.InitNode(node)
@@ -141,6 +139,24 @@ func (node *PathNode[V, A]) updateImplicitNode(arg A) {
 	}
 }
 
+func (node PathNode[V, A]) initEdges() {
+	node.children = make(map[byte]*_Edge[V, A])
+}
+
+func (node PathNode[V, A]) getEdge(c byte) *_Edge[V, A] {
+	if node.children == nil {
+		return nil
+	}
+	return node.children[c]
+}
+
+func (node PathNode[V, A]) setEdge(c byte, label string, target *PathNode[V, A]) {
+	if node.children == nil {
+		node.initEdges()
+	}
+	node.children[c] = &_Edge[V, A]{label: label, target: target}
+}
+
 type _InsertContext[V any, A any] struct {
 	path     string
 	slash    bool
@@ -149,11 +165,18 @@ type _InsertContext[V any, A any] struct {
 	arg      A
 }
 
-func (node *PathNode[V, A]) insertInternal(ctx *_InsertContext[V, A]) (*PathNode[V, A], error) {
+func (node *PathNode[V, A]) _insert(ctx *_InsertContext[V, A]) (*PathNode[V, A], error) {
+	var newNode *PathNode[V, A]
 	var err error
 
-	if node.flags&_FL_GLOB != 0 {
-		return nil, fmt.Errorf("bug: glob node in tree")
+	switch node.Kind {
+	case PATHNODE_KIND_FILE:
+	case PATHNODE_KIND_INTERNAL:
+	case PATHNODE_KIND_DIRECTORY:
+	case PATHNODE_KIND_GLOB:
+		panic("bug: glob node in tree")
+	default:
+		panic("bug: unknown node kind")
 	}
 
 	ctx.path, err = cleanPathPrefix(ctx.path)
@@ -161,152 +184,137 @@ func (node *PathNode[V, A]) insertInternal(ctx *_InsertContext[V, A]) (*PathNode
 		return nil, err
 	}
 
-	if ctx.slash {
-		if node.flags&_FL_INTERNAL != 0 {
-			node.flags = _FL_DIRECTORY
-		}
-
-	}
-
-	// if path is empty, this is insert into existing node
-	if ctx.path == "" {
+	if ctx.path != "" {
+		newNode = node
 		if ctx.slash {
-			if node.flags&_FL_INTERNAL != 0 {
-				if node.flags&(_FL_DIRECTORY|_FL_IMPLICIT) != 0 {
-					return nil, fmt.Errorf("bug: internal node is implicit and/or a directory")
-				}
-				node.flags = _FL_DIRECTORY
-				ctx.fullPath.WriteByte('/') // TODO
-				node.Path = ctx.fullPath.String()
-				node.Parent = ctx.Parent
-				node.initNode()
-			} else if node.flags&_FL_DIRECTORY == 0 {
-				return nil, fmt.Errorf("cannot insert a directory into a file")
-			}
-		} else {
-		}
-		if node.flags&_FL_INTERNAL != 0 {
-			node.flags &^= _FL_INTERNAL
-			node.Path = ctx.fullPath.String()
-			node.Parent = ctx.parent // TODO test after bridge node is added
-			node.initNode()
-		}
-		if node.flags&_FL_IMPLICIT != 0 {
-			if node.flags&_FL_DIRECTORY == 0 {
-				return nil, fmt.Errorf("bug: implicit node is not a directory node")
-			}
-			node.flags &^= _FL_IMPLICIT
-		}
-		node.updateNode(ctx.arg)
-		return node, nil
-
-	}
-
-	if node.flags&_FL_DIRECTORY != 0 {
-		// TODO strip leading empty paths
-		if node.flags&_FL_INTERNAL != 0 {
-			return nil, fmt.Errorf("bug: directory node is an internal node")
-		}
-		node.updateImplicitNode(ctx.arg)
-		ctx.parent = node
-	}
-
-	edge := node.children[path[0]]
-
-	// true if no edge.label shares a common prefix with path
-	if edge == nil {
-		var err error
-		head, tail, tailIsGlob := splitPath(path)
-		ctx.fullPath.WriteString(head)
-		if !tailIsGlob {
-			if head == "" || head == "." {
-				return nil, fmt.Errorf("bug: tail is not glob but head is empty")
-			}
-			newNode := &PathNode[V, A]{
-				Tree:     node.Tree,
-				Parent:   ctx.parent,
-				children: map[byte]*_Edge[V, A]{}, // TODO lazy init
-			}
-			node.children[path[0]] = &_Edge[V, A]{
-				label:  head,
-				target: newNode,
-			}
-			if tail == "" {
-				newNode.Path = ctx.fullPath.String()
-				newNode.initNode()
-				newNode.updateNode(ctx.arg)
-				node = newNode
-			} else {
+			switch node.Kind {
+			case PATHNODE_KIND_FILE:
+				return nil, fmt.Errorf("trying to insert directory at existing file")
+			case PATHNODE_KIND_INTERNAL:
+				node.Kind = PATHNODE_KIND_DIRECTORY
 				ctx.fullPath.WriteByte('/')
-				newNode.Path = ctx.fullPath.String()
-				newNode.flags = _FL_DIRECTORY | _FL_IMPLICIT
-				newNode.initNode()
-				newNode.updateImplicitNode(ctx.arg)
-				ctx.parent = newNode
-				node, err = newNode.insertInternal(tail, ctx)
+				node.Path = ctx.fullPath.String()
+				node.Parent = ctx.parent
+				node.initNode()
+				node.updateNode(ctx.arg)
+			case PATHNODE_KIND_DIRECTORY:
+				node.Flags &^= PATHNODE_FLAG_IMPLICIT
+				node.updateNode(ctx.arg)
 			}
 		} else {
-			if tail == "" {
-				return nil, fmt.Errorf("bug: tail is empty glob")
+			switch node.Kind {
+			case PATHNODE_KIND_FILE:
+				node.updateNode(ctx.arg)
+			case PATHNODE_KIND_INTERNAL:
+				node.Kind = PATHNODE_KIND_FILE
+				node.Path = ctx.fullPath.String()
+				node.Parent = ctx.parent
+				node.initNode()
+				node.updateNode(ctx.arg)
+			case PATHNODE_KIND_DIRECTORY:
+				return nil, fmt.Errorf("trying to insert file at existing directory")
 			}
-			if head != "" {
-				newNode := &PathNode[V, A]{
-					Tree:     node.Tree,
-					flags:    _FL_INTERNAL,
-					children: map[byte]*_Edge[V, A]{}, // TODO lazy init
-				}
-				node.children[path[0]] = &_Edge[V, A]{
-					label:  head,
-					target: newNode,
-				}
-				node = newNode
-			}
-			//node, err = node.AddGlob(tail, ctx) // TODO
 		}
-		return node, err
+	} else {
+		if ctx.slash {
+			switch node.Kind {
+			case PATHNODE_KIND_FILE:
+				return nil, fmt.Errorf("trying to insert directory at existing file")
+			case PATHNODE_KIND_INTERNAL:
+				node.Kind = PATHNODE_KIND_DIRECTORY
+				ctx.fullPath.WriteByte('/')
+				node.Path = ctx.fullPath.String()
+				node.Parent = ctx.parent
+				node.initNode()
+				node.updateImplicitNode(ctx.arg)
+			case PATHNODE_KIND_DIRECTORY:
+				node.updateImplicitNode(ctx.arg)
+			}
+		}
+		c := ctx.path[0]
+		edge := node.getEdge(c)
+		// true if no edge.label shares a common prefix with path
+		if edge == nil {
+			head, tail, tailIsGlob := splitPath(ctx.path)
+			ctx.fullPath.WriteString(head)
+			if !tailIsGlob {
+				if head == "" || head == "." {
+					panic("bug: tail is not glob but head is empty")
+				}
+				newNode = &PathNode[V, A]{
+					Tree:   node.Tree,
+					Parent: ctx.parent,
+				}
+				node.setEdge(c, head, newNode)
+				if tail == "" {
+					newNode.Kind = PATHNODE_KIND_FILE
+					newNode.Path = ctx.fullPath.String()
+					newNode.initNode()
+					newNode.updateNode(ctx.arg)
+					node = newNode
+				} else {
+					newNode.Kind = PATHNODE_KIND_DIRECTORY
+					ctx.fullPath.WriteByte('/')
+					newNode.Path = ctx.fullPath.String()
+					newNode.Flags = PATHNODE_FLAG_IMPLICIT
+					newNode.initNode()
+					newNode.updateImplicitNode(ctx.arg)
+					ctx.path = tail
+					ctx.parent = newNode
+					newNode, err = newNode._insert(ctx)
+				}
+			} else {
+				if tail == "" {
+					panic("bug: tail is empty glob")
+				}
+				if head == "" {
+					newNode = node
+				} else {
+					newNode = &PathNode[V, A]{
+						Tree: node.Tree,
+						Kind: PATHNODE_KIND_INTERNAL,
+					}
+					node.setEdge(c, head, newNode)
+				}
+				//newNode, err = newNode._insertGlob(ctx, tail) // TODO
+			}
+		} else {
+			prefix, pathSuffix, edgeSuffix, _ := longestCommonPrefix(ctx.path, edge.label)
+			ctx.path = pathSuffix
+			ctx.fullPath.WriteString(prefix)
+			// true if edge.label is a prefix of path
+			if edgeSuffix == "" {
+				newNode, err = edge.target._insert(ctx)
+			} else {
+				// edge.label and path share a common prefix
+				bridge := &PathNode[V, A]{
+					Tree: node.Tree,
+					Kind: PATHNODE_KIND_INTERNAL,
+				}
+				node.setEdge(c, prefix, bridge)
+				bridge.setEdge(edgeSuffix[0], edgeSuffix, edge.target)
+				newNode, err = bridge._insert(ctx)
+			}
+		}
 	}
-
-	prefix, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
-	ctx.fullPath.WriteString(prefix)
-
-	// true if edge.label is a prefix of path
-	if edgeSuffix == "" {
-		return edge.target.insertInternal(pathSuffix, ctx)
-	}
-
-	// edge.label and path share a common prefix
-	bridge := &PathNode[V, A]{
-		Tree:     node.Tree,
-		flags:    _FL_INTERNAL,
-		children: map[byte]*_Edge[V, A]{}, // TODO better init
-	}
-	node.children[path[0]] = &_Edge[V, A]{
-		label:  prefix,
-		target: bridge,
-	}
-	bridge.children[edgeSuffix[0]] = &_Edge[V, A]{
-		label:  edgeSuffix,
-		target: edge.target,
-	}
-	return bridge.insertInternal(pathSuffix, ctx)
+	return newNode, err
 }
 
-func (node *PathNode[V, A]) searchInternal(path string) *PathNode[V, A] {
+func (node *PathNode[V, A]) _search(path string, slash bool) *PathNode[V, A] {
 	var result *PathNode[V, A]
 	path, err := cleanPathPrefix(path)
 	if err != nil {
 		return nil
 	}
 	if path == "" {
-		if node.flags&_FL_INTERNAL == 0 {
+		if (node.Kind == PATHNODE_KIND_FILE && !slash) || node.Kind == PATHNODE_KIND_DIRECTORY {
 			result = node
 		}
 	} else {
-		if edge, ok := node.children[path[0]]; ok {
-			_, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
+		if edge := node.getEdge(path[0]); edge != nil {
+			_, pathSuffix, edgeSuffix, slash := longestCommonPrefix(path, edge.label)
 			if edgeSuffix == "" {
-				next := node.children[path[0]].target
-				result = next.searchInternal(pathSuffix)
+				result = edge.target._search(pathSuffix, slash)
 			}
 		}
 	}
@@ -324,23 +332,23 @@ func (node *PathNode[V, A]) searchInternal(path string) *PathNode[V, A] {
 }
 
 func (node *PathNode[V, A]) printInternal(indent int) {
-	typeList := make([]string, 0, 4)
-	if node.flags&_FL_INTERNAL != 0 {
-		typeList = append(typeList, "INTERNAL")
+	var kindStr string
+	switch node.Kind {
+	case PATHNODE_KIND_FILE:
+		kindStr = "FILE"
+	case PATHNODE_KIND_INTERNAL:
+		kindStr = "BRIDGE"
+	case PATHNODE_KIND_DIRECTORY:
+		kindStr = "DIR"
+		if node.Flags&PATHNODE_FLAG_IMPLICIT != 0 {
+			kindStr = "DIR*"
+		} else {
+			kindStr = "DIR"
+		}
+	case PATHNODE_KIND_GLOB:
+		kindStr = "GLOB"
 	}
-	if node.flags&_FL_DIRECTORY != 0 {
-		typeList = append(typeList, "DIRECTORY")
-	}
-	if node.flags&_FL_IMPLICIT != 0 {
-		typeList = append(typeList, "IMPLICIT")
-	}
-	if node.flags&_FL_GLOB != 0 {
-		typeList = append(typeList, "GLOB")
-	}
-	if len(typeList) == 0 {
-		typeList = append(typeList, "FILE")
-	}
-	fmt.Printf("% *sNODE %v %#v\n", indent, "", typeList, node.Path)
+	fmt.Printf("% *sNODE %s %#v\n", indent, "", kindStr, node.Path)
 
 	/* TODO
 	for _, glob := range node.globs {
@@ -364,25 +372,20 @@ func (node *PathNode[V, A]) printInternal(indent int) {
 }
 
 func (node *PathNode[V, A]) Insert(path string, arg A) (*PathNode[V, A], error) {
-	if node.flags&_FL_INTERNAL != 0 {
-		return nil, fmt.Errorf("bug: Insert() on internal node")
+	if node.Kind != PATHNODE_KIND_DIRECTORY {
+		return nil, fmt.Errorf("bug: Insert() on non-directory node")
 	}
 	ctx := _InsertContext[V, A]{
 		path:  path,
-		slash: slash,
+		slash: true,
 		arg:   arg,
 	}
 	ctx.fullPath.WriteString(node.Path)
-	return node.insertInternal(&ctx)
+	return node._insert(&ctx)
 }
 
 func (node *PathNode[V, A]) Search(path string) *PathNode[V, A] {
-	//TODO
-	path, err := cleanPathPrefix(path)
-	if err != nil {
-		return nil
-	}
-	return node.searchInternal(path)
+	return node._search(path, true)
 }
 
 func (node *PathNode[V, A]) Contains(path string) bool {
@@ -391,6 +394,15 @@ func (node *PathNode[V, A]) Contains(path string) bool {
 
 func (node *PathNode[V, A]) Print() {
 	node.printInternal(0)
+}
+
+func (tree *PathTree[V, A]) Init() {
+	tree.Root.Tree = tree
+	tree.Root.Kind = PATHNODE_KIND_DIRECTORY
+	tree.Root.Flags = PATHNODE_FLAG_IMPLICIT
+	if tree.InitNode != nil {
+		tree.InitNode(&tree.Root)
+	}
 }
 
 func (tree *PathTree[V, A]) Insert(path string, arg A) (*PathNode[V, A], error) {
