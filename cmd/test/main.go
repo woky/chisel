@@ -7,11 +7,13 @@ import (
 )
 
 func main() {
+	var node *slicer.PathNode[bool, any]
+	var err error
 	tree := slicer.PathTree[bool, any]{}
 	tree.Init()
-	_, err := tree.Insert("/a/b", nil)
-	fmt.Println(err)
-	tree.Insert("/a/bc", nil)
-	tree.Insert("/a/bc/", nil)
-	tree.Root.Print()
+	node, err = tree.Insert("/foo*", nil)
+	fmt.Println(tree.Contains("/foo/"))
+
+	_ = node
+	_ = err
 }

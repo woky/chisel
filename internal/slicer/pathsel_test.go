@@ -7,297 +7,211 @@ import (
 )
 
 func (s *S) TestLongestCommonPrefix(c *C) {
-	var prefix, aSuffix, bSuffix string
+	runTest := func(a, b, expPrefix, expASuffix, expBSuffix string) {
+		prefix, aSuffix, bSuffix := slicer.LongestCommonPrefix(a, b)
+		c.Assert(prefix, Equals, expPrefix)
+		c.Assert(aSuffix, Equals, expASuffix)
+		c.Assert(bSuffix, Equals, expBSuffix)
+	}
 
-	prefix, aSuffix, bSuffix = slicer.LongestCommonPrefix("abcd", "abab")
-	c.Assert(prefix, Equals, "ab")
-	c.Assert(aSuffix, Equals, "cd")
-	c.Assert(bSuffix, Equals, "ab")
-
-	prefix, aSuffix, bSuffix = slicer.LongestCommonPrefix("abcd", "ab")
-	c.Assert(prefix, Equals, "ab")
-	c.Assert(aSuffix, Equals, "cd")
-	c.Assert(bSuffix, Equals, "")
-
-	prefix, aSuffix, bSuffix = slicer.LongestCommonPrefix("ab", "ab")
-	c.Assert(prefix, Equals, "ab")
-	c.Assert(aSuffix, Equals, "")
-	c.Assert(bSuffix, Equals, "")
-
-	prefix, aSuffix, bSuffix = slicer.LongestCommonPrefix("ab", "cd")
-	c.Assert(prefix, Equals, "")
-	c.Assert(aSuffix, Equals, "ab")
-	c.Assert(bSuffix, Equals, "cd")
-
-	prefix, aSuffix, bSuffix = slicer.LongestCommonPrefix("", "")
-	c.Assert(prefix, Equals, "")
-	c.Assert(aSuffix, Equals, "")
-	c.Assert(bSuffix, Equals, "")
-
-	prefix, aSuffix, bSuffix = slicer.LongestCommonPrefix("", "ab")
-	c.Assert(prefix, Equals, "")
-	c.Assert(aSuffix, Equals, "")
-	c.Assert(bSuffix, Equals, "ab")
-
-	prefix, aSuffix, bSuffix = slicer.LongestCommonPrefix("ab/c", "ab/c")
-	c.Assert(prefix, Equals, "ab/c")
-	c.Assert(aSuffix, Equals, "")
-	c.Assert(bSuffix, Equals, "")
-
-	prefix, aSuffix, bSuffix = slicer.LongestCommonPrefix("ab/c", "ab/")
-	c.Assert(prefix, Equals, "ab/")
-	c.Assert(aSuffix, Equals, "c")
-	c.Assert(bSuffix, Equals, "")
-
-	prefix, aSuffix, bSuffix = slicer.LongestCommonPrefix("/a/b/", "/a/b/")
-	c.Assert(prefix, Equals, "/a/b/")
-	c.Assert(aSuffix, Equals, "")
-	c.Assert(bSuffix, Equals, "")
+	runTest("abcd", "abab", "ab", "cd", "ab")
+	runTest("abcd", "ab", "ab", "cd", "")
+	runTest("ab", "ab", "ab", "", "")
+	runTest("ab", "ab", "ab", "", "")
+	runTest("ab", "cd", "", "ab", "cd")
+	runTest("", "", "", "", "")
+	runTest("", "", "", "", "")
+	runTest("", "ab", "", "", "ab")
+	runTest("ab/c", "ab/c", "ab/c", "", "")
+	runTest("/a", "/a", "/a", "", "")
+	runTest("./aa", "./ab", "./a", "a", "b")
+	runTest("aa", "aa/", "aa", "", "/")
 }
 
 func (s *S) TestCleanPathPrefix(c *C) {
-	var result string
-	var err error
+	runTest := func(prefix, expResult string, errCheck Checker) {
+		result, err := slicer.CleanPathPrefix(prefix)
+		c.Assert(result, Equals, expResult)
+		c.Assert(err, errCheck)
+	}
 
-	result, err = slicer.CleanPathPrefix("")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "")
-
-	result, err = slicer.CleanPathPrefix("/")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "/")
-
-	result, err = slicer.CleanPathPrefix("abc")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "abc")
-
-	result, err = slicer.CleanPathPrefix("a/b/c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "a/b/c")
-
-	result, err = slicer.CleanPathPrefix("/a/b/c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "/a/b/c")
-
-	result, err = slicer.CleanPathPrefix("./a/b/c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "a/b/c")
-
-	result, err = slicer.CleanPathPrefix("/./a/b/c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "a/b/c")
-
-	result, err = slicer.CleanPathPrefix("//a/b/c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "a/b/c")
-
-	result, err = slicer.CleanPathPrefix("/////a/b/c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "a/b/c")
-
-	result, err = slicer.CleanPathPrefix("./././a/b/c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "a/b/c")
-
-	result, err = slicer.CleanPathPrefix("/./././a/b/c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "a/b/c")
-
-	result, err = slicer.CleanPathPrefix(".//.///././/a/b/c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "a/b/c")
-
-	result, err = slicer.CleanPathPrefix("./a/./b/c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "a/./b/c")
-
-	result, err = slicer.CleanPathPrefix("a///b/./c")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "a///b/./c")
-
-	result, err = slicer.CleanPathPrefix("../a/b/c")
-	c.Assert(err, NotNil)
-
-	result, err = slicer.CleanPathPrefix("/../a/b/c")
-	c.Assert(err, NotNil)
-
-	result, err = slicer.CleanPathPrefix("././//./.././a/b/c")
-	c.Assert(err, NotNil)
-
-	result, err = slicer.CleanPathPrefix("////../a/b/c")
-	c.Assert(err, NotNil)
-
-	result, err = slicer.CleanPathPrefix("..")
-	c.Assert(err, NotNil)
-
-	result, err = slicer.CleanPathPrefix("../")
-	c.Assert(err, NotNil)
-
-	result, err = slicer.CleanPathPrefix("...")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "...")
-
-	result, err = slicer.CleanPathPrefix("./...//")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "...//")
-
-	result, err = slicer.CleanPathPrefix("./.")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "")
-
-	result, err = slicer.CleanPathPrefix(".")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "")
-
-	result, err = slicer.CleanPathPrefix("")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "")
-
-	result, err = slicer.CleanPathPrefix(".///./")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "")
-
-	result, err = slicer.CleanPathPrefix(".foo")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, ".foo")
-
-	result, err = slicer.CleanPathPrefix("..foo")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "..foo")
-
-	result, err = slicer.CleanPathPrefix(".////foo")
-	c.Assert(err, IsNil)
-	c.Assert(result, Equals, "")
+	runTest("", "", IsNil)
+	runTest("/", "", IsNil)
+	runTest("abc", "abc", IsNil)
+	runTest("a/b/c", "a/b/c", IsNil)
+	runTest("/a/b/c", "a/b/c", IsNil)
+	runTest("./a/b/c", "a/b/c", IsNil)
+	runTest("/./a/b/c", "a/b/c", IsNil)
+	runTest("//a/b/c", "a/b/c", IsNil)
+	runTest("/////a/b/c", "a/b/c", IsNil)
+	runTest("./././a/b/c", "a/b/c", IsNil)
+	runTest("/./././a/b/c", "a/b/c", IsNil)
+	runTest(".//.///././/a/b/c", "a/b/c", IsNil)
+	runTest("./a/./b/c", "a/./b/c", IsNil)
+	runTest("a///b/./c", "a///b/./c", IsNil)
+	runTest("/../a/b/c", "", NotNil)
+	runTest("././//./.././a/b/c", "", NotNil)
+	runTest("////../a/b/c", "", NotNil)
+	runTest("..", "", NotNil)
+	runTest("../", "", NotNil)
+	runTest("...", "...", IsNil)
+	runTest("./...//", "...//", IsNil)
+	runTest("./.", "", IsNil)
+	runTest(".", "", IsNil)
+	runTest(".///./", "", IsNil)
+	runTest(".foo", ".foo", IsNil)
+	runTest("..foo", "..foo", IsNil)
+	runTest(".////foo", "foo", IsNil)
 }
 
-//TODO
-//c.Assert(tree.Contains(""), Equals, true)
-
-func (s *S) TestPathTreeSinglePath(c *C) {
+func (s *S) TestPathTreeContainsOnePath(c *C) {
 	tree := slicer.PathTree[bool, any]{}
 	tree.Init()
 
-	//tree.Insert("/var/log/messages", nil)
-	//_, err := tree.Insert("/var/log/messages", nil)
-	//c.Assert(err, IsNil)
-	//_, err = tree.Insert("/var/loag/messages", nil)
-	//c.Assert(err, IsNil)
-	//tree.Insert("/var/logg/.../././//./messages", nil)
-	//tree.Insert("/var/log/./././//./messages", nil)
-	tree.Insert("/a/b", nil)
-	tree.Insert("/a/bc", nil)
-	tree.Insert("/a/bc/", nil)
-	tree.Root.Print()
+	assertContains := func(path string, expContains bool) {
+		c.Assert(tree.Contains(path), Equals, expContains)
+	}
 
-	c.Assert(tree.Contains(""), Equals, true)
-	c.Assert(tree.Contains("/"), Equals, true)
-	c.Assert(tree.Contains("/var"), Equals, true)
-	c.Assert(tree.Contains("/var/"), Equals, true)
-	c.Assert(tree.Contains("/var/log"), Equals, true)
-	c.Assert(tree.Contains("/var/log/"), Equals, true)
-	c.Assert(tree.Contains("/var/log/messages"), Equals, true)
-	c.Assert(tree.Contains("/var/log/messages/"), Equals, true)
-	c.Assert(tree.Contains("var"), Equals, false)
-	c.Assert(tree.Contains("var/"), Equals, true)
-	c.Assert(tree.Contains("var/log"), Equals, false)
-	c.Assert(tree.Contains("var/log/"), Equals, true)
-	c.Assert(tree.Contains("var/log/messages"), Equals, true)
-	c.Assert(tree.Contains("var/log/messages/"), Equals, true)
+	tree.Insert("/var/log/messages", nil)
 
-	c.Assert(tree.Contains("./var/"), Equals, true)
-	c.Assert(tree.Contains("./var/."), Equals, true)
-	c.Assert(tree.Contains("./var/./"), Equals, true)
-	c.Assert(tree.Contains("./var/./log/"), Equals, true)
-
-	c.Assert(tree.Contains("./"), Equals, true)
-	c.Assert(tree.Contains(".//.///"), Equals, true)
-	c.Assert(tree.Contains("/var/./"), Equals, true)
-	c.Assert(tree.Contains("//var"), Equals, true)
-	c.Assert(tree.Contains("/var//"), Equals, true)
-
-	c.Assert(tree.Contains("./var/../log/"), Equals, false)
-	c.Assert(tree.Contains("./var/.../log/"), Equals, false)
-	c.Assert(tree.Contains("/var/log/dmesg"), Equals, false)
-	c.Assert(tree.Contains("/zzz"), Equals, false)
+	assertContains("", true)
+	assertContains("/", true)
+	assertContains("/var", true)
+	assertContains("/var/", true)
+	assertContains("/var/log", true)
+	assertContains("/var/log/", true)
+	assertContains("/var/log/messages", true)
+	assertContains("/var/log/messages/", false)
+	assertContains("var", true)
+	assertContains("var/", true)
+	assertContains("var/log", true)
+	assertContains("var/log/", true)
+	assertContains("var/log/messages", true)
+	assertContains("var/log/messages/", false)
+	assertContains("./var/", true)
+	assertContains("./var/.", true)
+	assertContains("./var/./", true)
+	assertContains("./var/./log/", true)
+	assertContains("./", true)
+	assertContains(".//.///", true)
+	assertContains("/var/./", true)
+	assertContains("//var", true)
+	assertContains("/var//", true)
+	assertContains("./var/../log/", false)
+	assertContains("./var/.../log/", false)
+	assertContains("/var/log/dmesg", false)
+	assertContains("/zzz", false)
 }
 
-//func (s *S) TestPathSelectionFewPaths(c *C) {
-//	tree := slicer.PathSelection[bool, any]{}
-//	tree.Init()
-//
-//	tree.Insert("/a/b/c1/d/", nil)
-//	tree.Insert("/a/b/c1/d/e", nil)
-//	tree.Insert("/a/bbb/c/d/", nil)
-//	tree.Insert("/a/b/c1/d/eee", nil)
-//	tree.Insert("/a/b/c2/d/e", nil)
-//
-//	c.Assert(tree.Contains("/"), Equals, true)
-//	c.Assert(tree.Contains("/a/"), Equals, true)
-//	c.Assert(tree.Contains("/a/b/"), Equals, true)
-//	c.Assert(tree.Contains("/a/b/c1/"), Equals, true)
-//	c.Assert(tree.Contains("/a/b/c1/d/"), Equals, true)
-//	c.Assert(tree.Contains("/a/b/c1/d/e"), Equals, true)
-//	c.Assert(tree.Contains("/a/b/c1/d/eee"), Equals, true)
-//	c.Assert(tree.Contains("/a/b/c2/"), Equals, true)
-//	c.Assert(tree.Contains("/a/b/c2/d/"), Equals, true)
-//	c.Assert(tree.Contains("/a/b/c2/d/e"), Equals, true)
-//	c.Assert(tree.Contains("/a/bbb/"), Equals, true)
-//	c.Assert(tree.Contains("/a/bbb/c/"), Equals, true)
-//	c.Assert(tree.Contains("/a/bbb/c/d/"), Equals, true)
-//
-//	c.Assert(tree.Contains("/a"), Equals, false)
-//	c.Assert(tree.Contains("/a/b/c"), Equals, false)
-//	c.Assert(tree.Contains("/a/b/c/"), Equals, false)
-//	c.Assert(tree.Contains("/a/b/c1/d"), Equals, false)
-//	c.Assert(tree.Contains("/a/b/c1/d/e/"), Equals, false)
-//	c.Assert(tree.Contains("/a/b/c1/d/ee"), Equals, false)
-//	c.Assert(tree.Contains("/a/b/c2"), Equals, false)
-//	c.Assert(tree.Contains("/a/bb/"), Equals, false)
-//	c.Assert(tree.Contains("/a/bbb"), Equals, false)
-//	c.Assert(tree.Contains("/a/bbbb/"), Equals, false)
-//}
-//
-//func (s *S) TestPathSelectionGlobs(c *C) {
-//	tree := slicer.PathSelection[bool, any]{}
-//	tree.Init()
-//
-//	tree.Insert("/foo*", nil)
-//
-//	c.Assert(tree.Contains("/"), Equals, true)
-//	c.Assert(tree.Contains("/fo"), Equals, false)
-//	c.Assert(tree.Contains("/foo"), Equals, true)
-//	c.Assert(tree.Contains("/fooo"), Equals, true)
-//	c.Assert(tree.Contains("/foo/"), Equals, false)
-//	c.Assert(tree.Contains("/fooo/"), Equals, false)
-//
-//	tree.Insert("/fo*", nil)
-//
-//	c.Assert(tree.Contains("/fo"), Equals, true)
-//	c.Assert(tree.Contains("/foo"), Equals, true)
-//	c.Assert(tree.Contains("/fooo"), Equals, true)
-//	c.Assert(tree.Contains("/fo/"), Equals, false)
-//	c.Assert(tree.Contains("/foo/"), Equals, false)
-//	c.Assert(tree.Contains("/fooo/"), Equals, false)
-//
-//	tree.Insert("/foo", nil)
-//
-//	c.Assert(tree.Contains("/fo"), Equals, true)
-//	c.Assert(tree.Contains("/foo"), Equals, true)
-//	c.Assert(tree.Contains("/fooo"), Equals, true)
-//	c.Assert(tree.Contains("/fo/"), Equals, false)
-//	c.Assert(tree.Contains("/foo/"), Equals, false)
-//	c.Assert(tree.Contains("/fooo/"), Equals, false)
-//
-//	tree.Insert("/fo/bar", nil)
-//
-//	c.Assert(tree.Contains("/fo"), Equals, true)
-//	c.Assert(tree.Contains("/foo"), Equals, true)
-//	c.Assert(tree.Contains("/fooo"), Equals, true)
-//	c.Assert(tree.Contains("/fo/"), Equals, true)
-//	c.Assert(tree.Contains("/foo/"), Equals, false)
-//	c.Assert(tree.Contains("/fooo/"), Equals, false)
-//}
-//
+func (s *S) TestPathTreeContainsMorePaths(c *C) {
+	tree := slicer.PathTree[bool, any]{}
+	tree.Init()
+
+	assertContains := func(path string, expContains bool) {
+		c.Assert(tree.Contains(path), Equals, expContains)
+	}
+
+	tree.Insert("/a/b/c1/d/", nil)
+	tree.Insert("/a/b/c1/d/e", nil)
+	tree.Insert("/a/bbb/c/d/", nil)
+	tree.Insert("/a/b/c1/d/eee", nil)
+	tree.Insert("/a/b/c2/d/e", nil)
+
+	assertContains("/", true)
+	assertContains("/a", true)
+	assertContains("/a/", true)
+	assertContains("/a/b/", true)
+	assertContains("/a/b/c", false)
+	assertContains("/a/b/c/", false)
+	assertContains("/a/b/c1/", true)
+	assertContains("/a/b/c1/d", true)
+	assertContains("/a/b/c1/d/", true)
+	assertContains("/a/b/c1/d/e", true)
+	assertContains("/a/b/c1/d/e/", false)
+	assertContains("/a/b/c1/d/ee", false)
+	assertContains("/a/b/c1/d/eee", true)
+	assertContains("/a/b/c2", true)
+	assertContains("/a/b/c2/", true)
+	assertContains("/a/b/c2/d/", true)
+	assertContains("/a/b/c2/d/e", true)
+	assertContains("/a/bb/", false)
+	assertContains("/a/bbb", true)
+	assertContains("/a/bbb/", true)
+	assertContains("/a/bbb/c/", true)
+	assertContains("/a/bbb/c/d/", true)
+	assertContains("/a/bbbb/", false)
+
+}
+
+func (s *S) TestPathTreeReplaceValue(c *C) {
+	tree := slicer.PathTree[string, string]{}
+	tree.Root.Path = "/"
+	tree.UpdateNode = slicer.ReplaceValue[string]
+	tree.UpdateImplicitNode = slicer.ReplaceValue[string]
+	tree.Init()
+
+	checkValue := func(insertValue, expValue string) {
+		path := "/a/b/c"
+		node, err := tree.Insert(path, insertValue)
+		c.Assert(err, IsNil)
+		c.Assert(node, NotNil)
+		c.Assert(node.Path, Equals, path)
+		c.Assert(node.Value, Equals, expValue)
+	}
+
+	checkValue("A", "A")
+	checkValue("B", "B")
+	// modyfing hooks after Init() is unsupported, but test it anyway
+	tree.UpdateNode = nil
+	checkValue("C", "B")
+}
+
+func (s *S) TestPathTreeContainsGlobs(c *C) {
+	tree := slicer.PathTree[bool, any]{}
+	tree.Init()
+
+	assertContains := func(path string, expContains bool) {
+		c.Assert(tree.Contains(path), Equals, expContains)
+	}
+
+	// TODO test **
+	tree.Insert("/foo*", nil)
+
+	assertContains("/", true)
+	assertContains("/fo", false)
+	assertContains("/foo", true)
+	assertContains("/fooo", true)
+	assertContains("/foo/", false)
+	assertContains("/fooo/", false)
+
+	tree.Insert("/fo*", nil)
+
+	assertContains("/fo", true)
+	assertContains("/foo", true)
+	assertContains("/fooo", true)
+	assertContains("/fo/", false)
+	assertContains("/foo/", false)
+	assertContains("/fooo/", false)
+
+	tree.Insert("/foo", nil)
+
+	assertContains("/fo", true)
+	assertContains("/foo", true)
+	assertContains("/fooo", true)
+	assertContains("/fo/", false)
+	assertContains("/foo/", false)
+	assertContains("/fooo/", false)
+
+	tree.Insert("/fo/bar", nil)
+
+	assertContains("/fo", true)
+	assertContains("/foo", true)
+	assertContains("/fooo", true)
+	assertContains("/fo/", true)
+	assertContains("/foo/", false)
+	assertContains("/fooo/", false)
+}
+
 //func (s *S) TestPathSelectionSearch(c *C) {
 //	var value *slicer.PathValue[bool]
 //	tree := slicer.PathSelection[bool, any]{}
@@ -407,34 +321,6 @@ func (s *S) TestPathTreeSinglePath(c *C) {
 //	c.Assert(tree.Search("/aa/b/c"), IsNil)
 //}
 //
-//func (s *S) TestPathSelectionReturnValue(c *C) {
-//	var value *slicer.PathValue[string]
-//	tree := slicer.PathSelection[string, string]{}
-//	tree.UpdateUserData = slicer.ReplaceUserData[string]
-//	tree.Init()
-//
-//	value, _ = tree.Insert("/a/b/c", "A")
-//	c.Assert(value, NotNil)
-//	c.Assert(value.Path, Equals, "/a/b/c")
-//	c.Assert(value.Implicit, Equals, false)
-//	c.Assert(value.UserData, Equals, "A")
-//
-//	value, _ = tree.Insert("/a/b/c", "B")
-//	c.Assert(value, NotNil)
-//	c.Assert(value.Path, Equals, "/a/b/c")
-//	c.Assert(value.Implicit, Equals, false)
-//	c.Assert(value.UserData, Equals, "B")
-//
-//	// modyfing hooks after Init() is unsupported, but test it anyway
-//	tree.UpdateUserData = nil
-//
-//	value, _ = tree.Insert("/a/b/c", "C")
-//	c.Assert(value, NotNil)
-//	c.Assert(value.Path, Equals, "/a/b/c")
-//	c.Assert(value.Implicit, Equals, false)
-//	c.Assert(value.UserData, Equals, "B")
-//}
-//
 //func (s *S) TestPathSelectionParent(c *C) {
 //	var value *slicer.PathValue[string]
 //	tree := slicer.PathSelection[string, string]{}
@@ -525,3 +411,10 @@ func (s *S) TestPathTreeSinglePath(c *C) {
 //
 //// TODO oddities
 //// Empty path
+
+// TODO test insert on directory
+
+// TODO
+//tree.Insert("/var/logg/.../././//./messages", nil)
+//tree.Insert("/var/log/./././//./messages", nil)
+//tree.Root.Print()
