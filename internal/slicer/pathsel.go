@@ -54,10 +54,9 @@ type _InsertContext[V any, A any] struct {
 }
 
 type _FindContext[V any, A any] struct {
-	path   string
-	first  bool
-	slash  bool
-	result []*PathNode[V, A]
+	path    string
+	slash   bool
+	results []*PathNode[V, A]
 }
 
 func longestCommonPrefix(a, b string) (prefix, aSuffix, bSuffix string) {
@@ -364,10 +363,20 @@ func (node *PathNode[V, A]) findInTree(ctx *_FindContext[V, A]) (result *PathNod
 	} else if (node.Kind == PATHNODE_KIND_FILE && !ctx.slash) || node.Kind == PATHNODE_KIND_DIRECTORY {
 		result = node
 	}
-	if (result == nil || !ctx.first) && node.globs != nil {
+	if ctx.results != nil {
+		if result != nil {
+			ctx.results = append(ctx.results, result)
+		}
 		for _, globEdge := range node.globs {
 			if strdist.GlobPath(globEdge.label, ctx.path) {
-				return globEdge.target
+				ctx.results = append(ctx.results, globEdge.target)
+			}
+		}
+	} else if result == nil {
+		for _, globEdge := range node.globs {
+			if strdist.GlobPath(globEdge.label, ctx.path) {
+				result = globEdge.target
+				break
 			}
 		}
 	}
@@ -423,20 +432,17 @@ func (node *PathNode[V, A]) Insert(path string, arg A) (*PathNode[V, A], error) 
 
 func (node *PathNode[V, A]) FindAll(path string) *PathNode[V, A] {
 	ctx := _FindContext[V, A]{
-		path:   path,
-		first:  false,
-		slash:  true,
-		result: make([]*PathNode[V, A], 0),
+		path:    path,
+		slash:   true,
+		results: make([]*PathNode[V, A], 0),
 	}
 	return node.findInTree(&ctx)
 }
 
 func (node *PathNode[V, A]) Find(path string) *PathNode[V, A] {
 	ctx := _FindContext[V, A]{
-		path:   path,
-		first:  true,
-		slash:  true,
-		result: make([]*PathNode[V, A], 0, 1),
+		path:  path,
+		slash: true,
 	}
 	return node.findInTree(&ctx)
 }
