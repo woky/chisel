@@ -53,6 +53,13 @@ type _InsertContext[V any, A any] struct {
 	arg      A
 }
 
+type _FindContext[V any, A any] struct {
+	path   string
+	first  bool
+	slash  bool
+	result []*PathNode[V, A]
+}
+
 func longestCommonPrefix(a, b string) (prefix, aSuffix, bSuffix string) {
 	limit := len(a)
 	if len(b) < limit {
@@ -340,31 +347,31 @@ func (node *PathNode[V, A]) insertInTree(ctx *_InsertContext[V, A]) (newNode *Pa
 	return
 }
 
-func (node *PathNode[V, A]) findInTree(path string, slash bool) *PathNode[V, A] {
-	origPath := path
-	path, err := cleanPathPrefix(path)
+func (node *PathNode[V, A]) findInTree(ctx *_FindContext[V, A]) (result *PathNode[V, A]) {
+	path, err := cleanPathPrefix(ctx.path)
 	if err != nil {
-		return nil
+		return
 	}
 	if path != "" {
 		if edge := node.getEdge(path[0]); edge != nil {
 			_, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
 			if edgeSuffix == "" {
-				slash = strings.HasPrefix(pathSuffix, "/")
-				return edge.target.findInTree(pathSuffix, slash)
+				ctx.path = pathSuffix
+				ctx.slash = strings.HasPrefix(pathSuffix, "/")
+				result = edge.target.findInTree(ctx)
 			}
 		}
-	} else if (node.Kind == PATHNODE_KIND_FILE && !slash) || node.Kind == PATHNODE_KIND_DIRECTORY {
-		return node
+	} else if (node.Kind == PATHNODE_KIND_FILE && !ctx.slash) || node.Kind == PATHNODE_KIND_DIRECTORY {
+		result = node
 	}
-	if node.globs != nil {
+	if (result == nil || !ctx.first) && node.globs != nil {
 		for _, globEdge := range node.globs {
-			if strdist.GlobPath(globEdge.label, origPath) {
+			if strdist.GlobPath(globEdge.label, ctx.path) {
 				return globEdge.target
 			}
 		}
 	}
-	return nil
+	return
 }
 
 func (node *PathNode[V, A]) printInternal(indent int) {
@@ -415,11 +422,23 @@ func (node *PathNode[V, A]) Insert(path string, arg A) (*PathNode[V, A], error) 
 }
 
 func (node *PathNode[V, A]) FindAll(path string) *PathNode[V, A] {
-	return node.findInTree(path, true)
+	ctx := _FindContext[V, A]{
+		path:   path,
+		first:  false,
+		slash:  true,
+		result: make([]*PathNode[V, A], 0),
+	}
+	return node.findInTree(&ctx)
 }
 
 func (node *PathNode[V, A]) Find(path string) *PathNode[V, A] {
-	return node.findInTree(path, true)
+	ctx := _FindContext[V, A]{
+		path:   path,
+		first:  true,
+		slash:  true,
+		result: make([]*PathNode[V, A], 0, 1),
+	}
+	return node.findInTree(&ctx)
 }
 
 func (node *PathNode[V, A]) Contains(path string) bool {
