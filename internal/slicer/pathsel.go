@@ -201,37 +201,35 @@ func (node *PathNode[V, A]) addGlob(ctx *_InsertContext[V, A], glob string) *Pat
 func (node *PathNode[V, A]) insertFileOnSelf(ctx *_InsertContext[V, A]) error {
 	switch node.Kind {
 	case PATHNODE_KIND_FILE:
-		node.updateNode(ctx.arg)
 	case PATHNODE_KIND_INTERNAL:
 		node.Kind = PATHNODE_KIND_FILE
-		node.Path = ctx.fullPath.String()
 		node.Parent = ctx.parent
+		node.Path = ctx.fullPath.String()
 		node.initNode()
-		node.updateNode(ctx.arg)
 	case PATHNODE_KIND_DIRECTORY:
 		return fmt.Errorf("trying to insert file at existing directory")
 	}
+	node.updateNode(ctx.arg)
 	return nil
 }
 
 func (node *PathNode[V, A]) insertDirOnSelf(ctx *_InsertContext[V, A], implicit bool) error {
-	updateFunc := node.updateNode
-	if implicit {
-		updateFunc = node.updateImplicitNode
-	}
 	switch node.Kind {
 	case PATHNODE_KIND_FILE:
 		return fmt.Errorf("trying to insert directory at existing file")
 	case PATHNODE_KIND_INTERNAL:
-		node.Kind = PATHNODE_KIND_DIRECTORY
 		ctx.fullPath.WriteByte('/')
-		node.Path = ctx.fullPath.String()
+		node.Kind = PATHNODE_KIND_DIRECTORY
 		node.Parent = ctx.parent
+		node.Path = ctx.fullPath.String()
 		node.initNode()
-		updateFunc(ctx.arg)
 	case PATHNODE_KIND_DIRECTORY:
 		node.Flags &^= PATHNODE_FLAG_IMPLICIT
-		updateFunc(ctx.arg)
+	}
+	if implicit {
+		node.updateImplicitNode(ctx.arg)
+	} else {
+		node.updateNode(ctx.arg)
 	}
 	return nil
 }
@@ -263,7 +261,7 @@ func (node *PathNode[V, A]) insertToNewEdge(ctx *_InsertContext[V, A]) (newNode 
 			newNode.updateImplicitNode(ctx.arg)
 			ctx.path = tail
 			ctx.parent = newNode
-			newNode, err = newNode.insertToTree(ctx)
+			newNode, err = newNode.insertInTree(ctx)
 		}
 	} else {
 		if tail == "" {
@@ -290,7 +288,7 @@ func (node *PathNode[V, A]) insertToExistingEdge(ctx *_InsertContext[V, A], edge
 	ctx.fullPath.WriteString(prefix)
 	// true if edge.label is a prefix of path
 	if edgeSuffix == "" {
-		newNode, err = edge.target.insertToTree(ctx)
+		newNode, err = edge.target.insertInTree(ctx)
 	} else {
 		// edge.label and path share a common prefix
 		bridge := &PathNode[V, A]{
@@ -299,28 +297,26 @@ func (node *PathNode[V, A]) insertToExistingEdge(ctx *_InsertContext[V, A], edge
 		}
 		node.setEdge(prefix[0], prefix, bridge)
 		bridge.setEdge(edgeSuffix[0], edgeSuffix, edge.target)
-		newNode, err = bridge.insertToTree(ctx)
+		newNode, err = bridge.insertInTree(ctx)
 	}
 	return
 }
 
-func (node *PathNode[V, A]) insertToTree(ctx *_InsertContext[V, A]) (*PathNode[V, A], error) {
-	var newNode *PathNode[V, A]
-	var err error
-
+func (node *PathNode[V, A]) insertInTree(ctx *_InsertContext[V, A]) (newNode *PathNode[V, A], err error) {
 	switch node.Kind {
 	case PATHNODE_KIND_FILE:
 	case PATHNODE_KIND_INTERNAL:
 	case PATHNODE_KIND_DIRECTORY:
 	case PATHNODE_KIND_GLOB:
-		panic("bug: glob node in tree")
+		err = fmt.Errorf("cannot insert on glob")
+		return
 	default:
 		panic("bug: invalid node kind")
 	}
 
 	ctx.path, err = cleanPathPrefix(ctx.path)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	if ctx.path == "" {
@@ -334,18 +330,17 @@ func (node *PathNode[V, A]) insertToTree(ctx *_InsertContext[V, A]) (*PathNode[V
 		if ctx.slash {
 			node.insertDirOnSelf(ctx, true)
 		}
-		c := ctx.path[0]
-		edge := node.getEdge(c)
+		edge := node.getEdge(ctx.path[0])
 		if edge == nil {
 			newNode, err = node.insertToNewEdge(ctx)
 		} else {
 			newNode, err = node.insertToExistingEdge(ctx, edge)
 		}
 	}
-	return newNode, err
+	return
 }
 
-func (node *PathNode[V, A]) searchTree(path string, slash bool) *PathNode[V, A] {
+func (node *PathNode[V, A]) findInTree(path string, slash bool) *PathNode[V, A] {
 	origPath := path
 	path, err := cleanPathPrefix(path)
 	if err != nil {
@@ -356,7 +351,7 @@ func (node *PathNode[V, A]) searchTree(path string, slash bool) *PathNode[V, A] 
 			_, pathSuffix, edgeSuffix := longestCommonPrefix(path, edge.label)
 			if edgeSuffix == "" {
 				slash = strings.HasPrefix(pathSuffix, "/")
-				return edge.target.searchTree(pathSuffix, slash)
+				return edge.target.findInTree(pathSuffix, slash)
 			}
 		}
 	} else if (node.Kind == PATHNODE_KIND_FILE && !slash) || node.Kind == PATHNODE_KIND_DIRECTORY {
@@ -416,15 +411,19 @@ func (node *PathNode[V, A]) Insert(path string, arg A) (*PathNode[V, A], error) 
 		arg:    arg,
 	}
 	ctx.fullPath.WriteString(node.Path)
-	return node.insertToTree(&ctx)
+	return node.insertInTree(&ctx)
 }
 
-func (node *PathNode[V, A]) Search(path string) *PathNode[V, A] {
-	return node.searchTree(path, true)
+func (node *PathNode[V, A]) FindAll(path string) *PathNode[V, A] {
+	return node.findInTree(path, true)
+}
+
+func (node *PathNode[V, A]) Find(path string) *PathNode[V, A] {
+	return node.findInTree(path, true)
 }
 
 func (node *PathNode[V, A]) Contains(path string) bool {
-	return node.Search(path) != nil
+	return node.Find(path) != nil
 }
 
 func (node *PathNode[V, A]) Print() {
@@ -444,8 +443,8 @@ func (tree *PathTree[V, A]) Insert(path string, arg A) (*PathNode[V, A], error) 
 	return tree.Root.Insert(path, arg)
 }
 
-func (tree *PathTree[V, A]) Search(path string) *PathNode[V, A] {
-	return tree.Root.Search(path)
+func (tree *PathTree[V, A]) Find(path string) *PathNode[V, A] {
+	return tree.Root.Find(path)
 }
 
 func (tree *PathTree[V, A]) Contains(path string) bool {

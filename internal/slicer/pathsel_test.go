@@ -166,75 +166,88 @@ func (s *S) TestPathTreeReplaceValue(c *C) {
 	checkValue("C", "B")
 }
 
-func (s *S) TestPathTreeContainsGlobs(c *C) {
-	tree := slicer.PathTree[bool, any]{}
-	tree.Init()
-
-	assertContains := func(path string, expContains bool) {
-		c.Assert(tree.Contains(path), Equals, expContains)
-	}
-
-	// TODO test **
-	tree.Insert("/foo*", nil)
-
-	assertContains("/", true)
-	assertContains("/fo", false)
-	assertContains("/foo", true)
-	assertContains("/fooo", true)
-	assertContains("/foo/", false)
-	assertContains("/fooo/", false)
-
-	tree.Insert("/fo*", nil)
-
-	assertContains("/fo", true)
-	assertContains("/foo", true)
-	assertContains("/fooo", true)
-	assertContains("/fo/", false)
-	assertContains("/foo/", false)
-	assertContains("/fooo/", false)
-
-	tree.Insert("/foo", nil)
-
-	assertContains("/fo", true)
-	assertContains("/foo", true)
-	assertContains("/fooo", true)
-	assertContains("/fo/", false)
-	assertContains("/foo/", false)
-	assertContains("/fooo/", false)
-
-	tree.Insert("/fo/bar", nil)
-
-	assertContains("/fo", true)
-	assertContains("/foo", true)
-	assertContains("/fooo", true)
-	assertContains("/fo/", true)
-	assertContains("/foo/", false)
-	assertContains("/fooo/", false)
+type treeTestContext[V any, A any] struct {
+	c    *C
+	tree slicer.PathTree[V, A]
 }
 
-//func (s *S) TestPathSelectionSearch(c *C) {
+func (ctx *treeTestContext[V, A]) assertContains(path string, expContains bool) {
+	ctx.c.Assert(ctx.tree.Contains(path), Equals, expContains)
+}
+
+func (ctx *treeTestContext[V, A]) assertValue(path string, expValue V) {
+	node := ctx.tree.Find(path)
+	ctx.c.Assert(node, NotNil)
+	ctx.c.Assert(node.Value, Equals, expValue)
+}
+
+func (s *S) TestPathTreeContainsGlobs(c *C) {
+	ctx := treeTestContext[string, string]{c: c}
+	ctx.tree.UpdateNode = slicer.ReplaceValue[string]
+	ctx.tree.UpdateImplicitNode = slicer.ReplaceValue[string]
+	ctx.tree.Init()
+
+	ctx.tree.Insert("/foo*", "A")
+
+	ctx.assertValue("/", "A")
+	ctx.assertContains("/fo", false)
+	ctx.assertValue("/foo", "A")
+	ctx.assertValue("/fooo", "A")
+	//ctx.assertValue("/foo/", "A") // TODO
+	//ctx.assertValue("/fooo/", "A") // TODO
+
+	ctx.tree.Insert("/fo*", "B")
+
+	ctx.assertValue("/fo", "B")
+	//ctx.assertValue("/foo", "A") // TODO
+	ctx.assertValue("/foo", "A")
+	ctx.assertValue("/fooo", "A")
+	//ctx.assertValue("/fo/", "B") // TODO
+	//ctx.assertValue("/foo/", "A") // TODO
+	//ctx.assertValue("/fooo/", "A") // TODO
+
+	ctx.tree.Insert("/foo", "C")
+
+	ctx.assertValue("/fo", "B")
+	ctx.assertValue("/foo", "C")
+	ctx.assertValue("/fooo", "A")
+	//ctx.assertValue("/fo/", "A") // TODO
+	//ctx.assertValue("/foo/", "A")
+	//ctx.assertValue("/fooo/", "A")
+
+	ctx.tree.Insert("/fo/bar", "D")
+
+	ctx.assertValue("/fo", "D")
+	ctx.assertValue("/foo", "C")
+	ctx.assertValue("/fooo", "A")
+	//ctx.assertValue("/fo/", "A") // TODO
+	//ctx.assertValue("/foo/", "A") // TODO
+	//ctx.assertValue("/fooo/", "A") // TODO
+}
+
+//func (s *S) TestPathSelectionFind(c *C) {
 //	var value *slicer.PathValue[bool]
 //	tree := slicer.PathSelection[bool, any]{}
 //	tree.Init()
 //
 //	tree.Insert("/a/b/c", nil)
 //
-//	value = tree.Search("/")
+//	value = tree.Find("/")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/")
 //	c.Assert(value.Implicit, Equals, true)
 //
-//	value = tree.Search("/a/")
+//	value = tree.Find("/a/")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/")
 //	c.Assert(value.Implicit, Equals, true)
 //
-//	value = tree.Search("/a/b/")
+//	value = tree.Find("/a/b/")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/b/")
 //	c.Assert(value.Implicit, Equals, true)
 //
-//	value = tree.Search("/a/b/c")
+//	value = tree.Find("/a/b/c")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/b/c")
 //	c.Assert(value.Implicit, Equals, false)
@@ -242,83 +255,83 @@ func (s *S) TestPathTreeContainsGlobs(c *C) {
 //	tree.Insert("/a/b/cc/", nil)
 //	tree.Insert("/a/bb/c", nil)
 //
-//	value = tree.Search("/a/b/cc/")
+//	value = tree.Find("/a/b/cc/")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/b/cc/")
 //	c.Assert(value.Implicit, Equals, false)
 //
-//	value = tree.Search("/a/bb/")
+//	value = tree.Find("/a/bb/")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/bb/")
 //	c.Assert(value.Implicit, Equals, true)
 //
-//	value = tree.Search("/a/bb/c")
+//	value = tree.Find("/a/bb/c")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/bb/c")
 //	c.Assert(value.Implicit, Equals, false)
 //
-//	value = tree.Search("/a/bb/c")
+//	value = tree.Find("/a/bb/c")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/bb/c")
 //	c.Assert(value.Implicit, Equals, false)
 //
-//	c.Assert(tree.Search("/a"), IsNil)
-//	c.Assert(tree.Search("/a/b"), IsNil)
-//	c.Assert(tree.Search("/a/bb"), IsNil)
-//	c.Assert(tree.Search("/a/b/c/"), IsNil)
-//	c.Assert(tree.Search("/zzz"), IsNil)
+//	c.Assert(tree.Find("/a"), IsNil)
+//	c.Assert(tree.Find("/a/b"), IsNil)
+//	c.Assert(tree.Find("/a/bb"), IsNil)
+//	c.Assert(tree.Find("/a/b/c/"), IsNil)
+//	c.Assert(tree.Find("/zzz"), IsNil)
 //
 //	tree.Insert("/a/b*", nil)
 //	tree.Insert("/a/bbb", nil)
 //
-//	value = tree.Search("/a/bbb")
+//	value = tree.Find("/a/bbb")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/bbb")
 //	c.Assert(value.Implicit, Equals, false)
 //	c.Assert(value.PathIsGlob, Equals, false)
 //
-//	value = tree.Search("/a/b/")
+//	value = tree.Find("/a/b/")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/b/")
 //	c.Assert(value.Implicit, Equals, true)
 //	c.Assert(value.PathIsGlob, Equals, false)
 //
-//	value = tree.Search("/a/bb/")
+//	value = tree.Find("/a/bb/")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/bb/")
 //	c.Assert(value.Implicit, Equals, true)
 //	c.Assert(value.PathIsGlob, Equals, false)
 //
-//	value = tree.Search("/a/bbbb")
+//	value = tree.Find("/a/bbbb")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/b*")
 //	c.Assert(value.Implicit, Equals, false)
 //	c.Assert(value.PathIsGlob, Equals, true)
 //
-//	c.Assert(tree.Search("/a/bbbb/"), IsNil)
+//	c.Assert(tree.Find("/a/bbbb/"), IsNil)
 //
 //	tree.Insert("/a**/b", nil)
 //
-//	value = tree.Search("/a/b/")
+//	value = tree.Find("/a/b/")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a/b/")
 //	c.Assert(value.Implicit, Equals, true)
 //	c.Assert(value.PathIsGlob, Equals, false)
 //
-//	value = tree.Search("/aa/b")
+//	value = tree.Find("/aa/b")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a**/b")
 //	c.Assert(value.Implicit, Equals, false)
 //	c.Assert(value.PathIsGlob, Equals, true)
 //
-//	value = tree.Search("/aa/b/c/b")
+//	value = tree.Find("/aa/b/c/b")
 //	c.Assert(value, NotNil)
 //	c.Assert(value.Path, Equals, "/a**/b")
 //	c.Assert(value.Implicit, Equals, false)
 //	c.Assert(value.PathIsGlob, Equals, true)
 //
-//	c.Assert(tree.Search("/aa/b/"), IsNil)
-//	c.Assert(tree.Search("/aa/b/c"), IsNil)
+//	c.Assert(tree.Find("/aa/b/"), IsNil)
+//	c.Assert(tree.Find("/aa/b/c"), IsNil)
 //}
 //
 //func (s *S) TestPathSelectionParent(c *C) {
@@ -390,7 +403,7 @@ func (s *S) TestPathTreeContainsGlobs(c *C) {
 //	tree.Insert("/", 1)
 //	tree.Insert("/a/b/", 1)
 //
-//	value = tree.Search("/")
+//	value = tree.Find("/")
 //	c.Assert(value, NotNil)
 //	//c.Assert(value.UserData.initCount, Equals, 0)
 //	//c.Assert(value.UserData.updateCount, Equals, 1)
