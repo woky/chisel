@@ -14,6 +14,8 @@ require (
 	github.com/klauspost/compress v1.15.4 // indirect
 	github.com/kr/pretty v0.2.1 // indirect
 	github.com/kr/text v0.1.0 // indirect
+	github.com/pkg/errors v0.8.1 // indirect
+	github.com/qri-io/starlib v0.5.0 // indirect
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	go.starlark.net v0.0.0-20220328144851-d1966c6b9fcd // indirect
 	golang.org/x/crypto v0.0.0-20220518034528-6f7dac969898 // indirect

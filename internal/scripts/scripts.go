@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/qri-io/starlib/re"
 )
 
 func init() {
@@ -23,8 +25,17 @@ type RunOptions struct {
 	Script    string
 }
 
+func loadModule(thread *starlark.Thread, module string) (starlark.StringDict, error) {
+	switch module {
+	case re.ModuleName:
+		return re.LoadModule()
+	default:
+		return nil, fmt.Errorf("no such module: %s", module)
+	}
+}
+
 func Run(opts *RunOptions) error {
-	thread := &starlark.Thread{Name: opts.Label}
+	thread := &starlark.Thread{Name: opts.Label, Load: loadModule}
 	globals, err := starlark.ExecFile(thread, opts.Label, opts.Script, opts.Namespace)
 	_ = globals
 	return err
