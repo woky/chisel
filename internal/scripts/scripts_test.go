@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"go.starlark.net/starlark"
+	"go.starlark.net/starlarktest"
 	. "gopkg.in/check.v1"
 
 	"github.com/canonical/chisel/internal/scripts"
@@ -265,4 +267,23 @@ func (s *S) TestContentRelative(c *C) {
 	content := scripts.ContentValue{RootDir: "foo"}
 	_, err := content.RealPath("/bar", nil)
 	c.Assert(err, ErrorMatches, "internal error: content defined with relative root: foo")
+}
+
+func testLoadStarlarkModule(thread *starlark.Thread, moduleName string) (starlark.StringDict, error) {
+	if moduleName == "assert.star" {
+		return starlarktest.LoadAssertModule()
+	}
+	return scripts.LoadModule(thread, moduleName)
+}
+
+func testExecFile(c *C, path string) starlark.StringDict {
+	thread := &starlark.Thread{Load: testLoadStarlarkModule}
+	starlarktest.SetReporter(thread, c)
+	result, err := starlark.ExecFile(thread, path, nil, nil)
+	c.Assert(err, IsNil)
+	return result
+}
+
+func (s *S) TestScriptFiles(c *C) {
+	testExecFile(c, "testdata/re.star")
 }
