@@ -36,7 +36,7 @@ type PathNode[V any, A any] struct {
 	Value    V
 	Kind     int
 	Flags    int
-	children map[byte]*_Edge[V, A]
+	children []*_Edge[V, A]
 	globs    []_Edge[V, A]
 }
 
@@ -154,21 +154,37 @@ func (node *PathNode[V, A]) updateImplicitNode(arg A) {
 }
 
 func (node *PathNode[V, A]) initEdges() {
-	node.children = make(map[byte]*_Edge[V, A])
+	node.children = make([]*_Edge[V, A], 0)
 }
 
 func (node *PathNode[V, A]) getEdge(c byte) *_Edge[V, A] {
 	if node.children == nil {
 		return nil
 	}
-	return node.children[c]
+	i := sort.Search(len(node.children), func(i int) bool {
+		return node.children[i].label[0] == c
+	})
+	if i < len(node.children) {
+		return node.children[i]
+	}
+	return nil
 }
 
 func (node *PathNode[V, A]) setEdge(c byte, label string, target *PathNode[V, A]) {
 	if node.children == nil {
 		node.initEdges()
 	}
-	node.children[c] = &_Edge[V, A]{label: label, target: target}
+	if edge := node.getEdge(c); edge != nil {
+		edge.label = label
+		edge.target = target
+		return
+	}
+	node.children = append(node.children, &_Edge[V, A]{label: label, target: target})
+	sort.Slice(node.children, func(i, j int) bool {
+		c1 := node.children[i].label[0]
+		c2 := node.children[j].label[0]
+		return c1 < c2
+	})
 }
 
 func (node *PathNode[V, A]) initGlobs() {
@@ -405,13 +421,7 @@ func (node *PathNode[V, A]) printInternal(indent int) {
 		}
 	}
 	if node.children != nil {
-		keys := make([]int, 0, len(node.children))
-		for k := range node.children {
-			keys = append(keys, int(k))
-		}
-		sort.Ints(keys)
-		for _, k := range keys {
-			edge := node.children[byte(k)]
+		for _, edge := range node.children {
 			fmt.Printf("% *sEDGE %#v\n", indent+4, "", edge.label)
 			next := edge.target
 			next.printInternal(indent + 8)
