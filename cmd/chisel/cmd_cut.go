@@ -95,7 +95,9 @@ func (cmd *cmdCut) Execute(args []string) error {
 		if err != nil {
 			return err
 		}
-		archives[archiveName] = openArchive
+		if openArchive != nil {
+			archives[archiveName] = openArchive
+		}
 	}
 
 	return slicer.Run(&slicer.RunOptions{
