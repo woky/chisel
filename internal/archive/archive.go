@@ -26,7 +26,11 @@ type Options struct {
 	Suites     []string
 	Components []string
 	CacheDir   string
+	baseURL    string
 }
+
+const ubuntuURL = "http://archive.ubuntu.com/ubuntu/"
+const ubuntuPortsURL = "http://ports.ubuntu.com/ubuntu-ports/"
 
 func Open(options *Options) (Archive, error) {
 	var err error
@@ -37,6 +41,12 @@ func Open(options *Options) (Archive, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+	switch options.Arch {
+	case "amd64", "i386":
+		options.baseURL = ubuntuURL
+	default:
+		options.baseURL = ubuntuPortsURL
 	}
 	return openUbuntu(options)
 }
@@ -62,6 +72,7 @@ type ubuntuArchive struct {
 type ubuntuIndex struct {
 	label     string
 	version   string
+	baseURL   string
 	arch      string
 	suite     string
 	component string
@@ -114,9 +125,6 @@ func (a *ubuntuArchive) Fetch(pkg string) (io.ReadCloser, error) {
 	return reader, nil
 }
 
-const ubuntuURL = "http://archive.ubuntu.com/ubuntu/"
-const ubuntuPortsURL = "http://ports.ubuntu.com/ubuntu-ports/"
-
 func openUbuntu(options *Options) (Archive, error) {
 	if len(options.Components) == 0 {
 		return nil, fmt.Errorf("archive options missing components")
@@ -141,6 +149,7 @@ func openUbuntu(options *Options) (Archive, error) {
 			index := &ubuntuIndex{
 				label:     options.Label,
 				version:   options.Version,
+				baseURL:   options.baseURL,
 				arch:      options.Arch,
 				suite:     suite,
 				component: component,
@@ -237,16 +246,11 @@ func (index *ubuntuIndex) fetch(suffix, digest string) (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	baseURL := ubuntuURL
-	if index.arch != "amd64" && index.arch != "i386" {
-		baseURL = ubuntuPortsURL
-	}
-
 	var url string
 	if strings.HasPrefix(suffix, "pool/") {
-		url = baseURL + suffix
+		url = index.baseURL + suffix
 	} else {
-		url = baseURL + "dists/" + index.suite + "/" + suffix
+		url = index.baseURL + "dists/" + index.suite + "/" + suffix
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
