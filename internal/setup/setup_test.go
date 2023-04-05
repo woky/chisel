@@ -88,7 +88,7 @@ var setupTests = []setupTest{{
 				Archive: "ubuntu",
 				Name:    "mypkg",
 				Path:    "slices/mydir/mypkg.yaml",
-				Slices: map[string]*setup.Slice{},
+				Slices:  map[string]*setup.Slice{},
 			},
 		},
 	},
@@ -352,7 +352,7 @@ var setupTests = []setupTest{{
 						/path1: {copy: /other}
 		`,
 	},
-	relerror:  "slices mypkg1_myslice1 and mypkg1_myslice2 conflict on /path1",
+	relerror: "slices mypkg1_myslice1 and mypkg1_myslice2 conflict on /path1",
 }, {
 	summary: "Conflicting paths across packages",
 	input: map[string]string{
@@ -371,7 +371,7 @@ var setupTests = []setupTest{{
 						/path1:
 		`,
 	},
-	relerror:  "slices mypkg1_myslice1 and mypkg2_myslice1 conflict on /path1",
+	relerror: "slices mypkg1_myslice1 and mypkg2_myslice1 conflict on /path1",
 }, {
 	summary: "Directories must be suffixed with /",
 	input: map[string]string{
@@ -468,7 +468,7 @@ var setupTests = []setupTest{{
 						/file/foob*r:
 		`,
 	},
-	relerror:  `slices mypkg1_myslice and mypkg2_myslice conflict on /file/f\*obar and /file/foob\*r`,
+	relerror: `slices mypkg1_myslice and mypkg2_myslice conflict on /file/f\*obar and /file/foob\*r`,
 }, {
 	summary: "Conflicting globs and plain copies",
 	input: map[string]string{
@@ -487,7 +487,7 @@ var setupTests = []setupTest{{
 						/file/foob*r:
 		`,
 	},
-	relerror:  `slices mypkg1_myslice and mypkg2_myslice conflict on /file/foobar and /file/foob\*r`,
+	relerror: `slices mypkg1_myslice and mypkg2_myslice conflict on /file/foobar and /file/foob\*r`,
 }, {
 	summary: "Conflicting matching globs",
 	input: map[string]string{
@@ -506,7 +506,7 @@ var setupTests = []setupTest{{
 						/file/foob*r:
 		`,
 	},
-	relerror:  `slices mypkg1_myslice and mypkg2_myslice conflict on /file/foob\*r`,
+	relerror: `slices mypkg1_myslice and mypkg2_myslice conflict on /file/foob\*r`,
 }, {
 	summary: "Conflicting globs in same package is okay",
 	input: map[string]string{
@@ -534,7 +534,7 @@ var setupTests = []setupTest{{
 						/file/foob*r: {text: foo}
 		`,
 	},
-	relerror:  `slice mypkg_myslice path /file/foob\*r has invalid wildcard options`,
+	relerror: `slice mypkg_myslice path /file/foob\*r has invalid wildcard options`,
 }, {
 	summary: "Until is an okay option for globs",
 	input: map[string]string{
@@ -557,7 +557,7 @@ var setupTests = []setupTest{{
 						/path/: {mutable: true}
 		`,
 	},
-	relerror:  `slice mypkg_myslice mutable is not a regular file: /path/`,
+	relerror: `slice mypkg_myslice mutable is not a regular file: /path/`,
 }, {
 	summary: "Mutable does not work for directory making",
 	input: map[string]string{
@@ -569,7 +569,7 @@ var setupTests = []setupTest{{
 						/path/: {make: true, mutable: true}
 		`,
 	},
-	relerror:  `slice mypkg_myslice mutable is not a regular file: /path/`,
+	relerror: `slice mypkg_myslice mutable is not a regular file: /path/`,
 }, {
 	summary: "Mutable does not work for symlinks",
 	input: map[string]string{
@@ -581,7 +581,7 @@ var setupTests = []setupTest{{
 						/path: {symlink: /other, mutable: true}
 		`,
 	},
-	relerror:  `slice mypkg_myslice mutable is not a regular file: /path`,
+	relerror: `slice mypkg_myslice mutable is not a regular file: /path`,
 }, {
 	summary: "Until checks its value for validity",
 	input: map[string]string{
@@ -593,7 +593,7 @@ var setupTests = []setupTest{{
 						/path: {until: foo}
 		`,
 	},
-	relerror:  `slice mypkg_myslice has invalid 'until' for path /path: "foo"`,
+	relerror: `slice mypkg_myslice has invalid 'until' for path /path: "foo"`,
 }, {
 	summary: "Arch checks its value for validity",
 	input: map[string]string{
@@ -605,7 +605,7 @@ var setupTests = []setupTest{{
 						/path: {arch: foo}
 		`,
 	},
-	relerror:  `slice mypkg_myslice has invalid 'arch' for path /path: "foo"`,
+	relerror: `slice mypkg_myslice has invalid 'arch' for path /path: "foo"`,
 }, {
 	summary: "Arch checks its value for validity",
 	input: map[string]string{
@@ -617,7 +617,7 @@ var setupTests = []setupTest{{
 						/path: {arch: [i386, foo]}
 		`,
 	},
-	relerror:  `slice mypkg_myslice has invalid 'arch' for path /path: "foo"`,
+	relerror: `slice mypkg_myslice has invalid 'arch' for path /path: "foo"`,
 }, {
 	summary: "Single architecture selection",
 	input: map[string]string{
