@@ -24,12 +24,10 @@ type Release struct {
 	DefaultArchive string
 }
 
-type ProArchive string
-
 const (
-	ProNone        ProArchive = ""
-	ProFIPS        ProArchive = "fips"
-	ProFIPSUpdates ProArchive = "fips-updates"
+	ProNone        string = ""
+	ProFIPS        string = "fips"
+	ProFIPSUpdates string = "fips-updates"
 )
 
 // Archive is the location from which binary packages are obtained.
@@ -38,7 +36,7 @@ type Archive struct {
 	Version    string
 	Suites     []string
 	Components []string
-	Pro        ProArchive
+	Pro        string
 }
 
 // Package holds a collection of slices that represent parts of themselves.
@@ -336,7 +334,7 @@ type yamlArchive struct {
 	Suites     []string   `yaml:"suites"`
 	Components []string   `yaml:"components"`
 	Default    bool       `yaml:"default"`
-	Pro        ProArchive `yaml:"pro"`
+	Pro        string     `yaml:"pro"`
 }
 
 type yamlPackage struct {
