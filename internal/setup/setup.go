@@ -24,12 +24,21 @@ type Release struct {
 	DefaultArchive string
 }
 
+type ProArchive string
+
+const (
+	ProNone        ProArchive = ""
+	ProFIPS        ProArchive = "fips"
+	ProFIPSUpdates ProArchive = "fips-updates"
+)
+
 // Archive is the location from which binary packages are obtained.
 type Archive struct {
 	Name       string
 	Version    string
 	Suites     []string
 	Components []string
+	Pro        ProArchive
 }
 
 // Package holds a collection of slices that represent parts of themselves.
@@ -323,10 +332,11 @@ type yamlRelease struct {
 const yamlReleaseFormat = "chisel-v1"
 
 type yamlArchive struct {
-	Version    string   `yaml:"version"`
-	Suites     []string `yaml:"suites"`
-	Components []string `yaml:"components"`
-	Default    bool     `yaml:"default"`
+	Version    string     `yaml:"version"`
+	Suites     []string   `yaml:"suites"`
+	Components []string   `yaml:"components"`
+	Default    bool       `yaml:"default"`
+	Pro        ProArchive `yaml:"pro"`
 }
 
 type yamlPackage struct {
@@ -428,6 +438,11 @@ func parseRelease(baseDir, filePath string, data []byte) (*Release, error) {
 		if len(details.Components) == 0 {
 			return nil, fmt.Errorf("%s: archive %q missing components field", fileName, archiveName)
 		}
+		switch details.Pro {
+		case ProNone, ProFIPS, ProFIPSUpdates:
+		default:
+			return nil, fmt.Errorf("%s: archive %q has invalid pro value: %q", fileName, archiveName, details.Pro)
+		}
 		if len(yamlVar.Archives) == 1 {
 			details.Default = true
 		} else if details.Default && release.DefaultArchive != "" {
@@ -441,6 +456,7 @@ func parseRelease(baseDir, filePath string, data []byte) (*Release, error) {
 			Version:    details.Version,
 			Suites:     details.Suites,
 			Components: details.Components,
+			Pro:        details.Pro,
 		}
 	}
 
