@@ -32,7 +32,7 @@ type Options struct {
 
 const ubuntuURL = "http://archive.ubuntu.com/ubuntu/"
 const ubuntuPortsURL = "http://ports.ubuntu.com/ubuntu-ports/"
-const proURL = "http://esm.canonical.com/"
+const ubuntuProURL = "http://esm.canonical.com/"
 
 func Open(options *Options) (Archive, error) {
 	var err error
@@ -46,7 +46,7 @@ func Open(options *Options) (Archive, error) {
 	}
 	switch options.Pro {
 	case "fips", "fips-updates":
-		options.baseURL = proURL + options.Pro + "/"
+		options.baseURL = ubuntuProURL + options.Pro + "/"
 	default:
 		switch options.Arch {
 		case "amd64", "i386":
