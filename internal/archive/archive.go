@@ -25,12 +25,14 @@ type Options struct {
 	Arch       string
 	Suites     []string
 	Components []string
+	Pro        string
 	CacheDir   string
 	baseURL    string
 }
 
 const ubuntuURL = "http://archive.ubuntu.com/ubuntu/"
 const ubuntuPortsURL = "http://ports.ubuntu.com/ubuntu-ports/"
+const proURL = "http://esm.canonical.com/"
 
 func Open(options *Options) (Archive, error) {
 	var err error
@@ -42,11 +44,16 @@ func Open(options *Options) (Archive, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch options.Arch {
-	case "amd64", "i386":
-		options.baseURL = ubuntuURL
+	switch options.Pro {
+	case "fips", "fips-updates":
+		options.baseURL = proURL + options.Pro + "/"
 	default:
-		options.baseURL = ubuntuPortsURL
+		switch options.Arch {
+		case "amd64", "i386":
+			options.baseURL = ubuntuURL
+		default:
+			options.baseURL = ubuntuPortsURL
+		}
 	}
 	return openUbuntu(options)
 }
