@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"path"
+	"net/url"
 	"strings"
 
 	"github.com/canonical/chisel/internal/testutil"
@@ -141,15 +141,20 @@ func (r *Release) Content() []byte {
 	return []byte(content)
 }
 
-func (r *Release) Render(prefix string, responses map[string]*http.Response) error {
+func (r *Release) Render(base string, responses map[string]*http.Response) error {
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return err
+	}
 	return r.Walk(func(item Item) error {
 		itemPath := item.Path()
+		var itemURL *url.URL
 		if strings.HasPrefix(itemPath, "pool/") {
-			itemPath = path.Join(prefix, itemPath)
+			itemURL = baseURL.JoinPath(itemPath)
 		} else {
-			itemPath = path.Join(prefix, "dists", r.Suite, itemPath)
+			itemURL = baseURL.JoinPath("dists", r.Suite, itemPath)
 		}
-		responses[itemPath] = &http.Response{
+		responses[itemURL.String()] = &http.Response{
 			Body:       ioutil.NopCloser(bytes.NewReader(item.Content())),
 			StatusCode: 200,
 		}

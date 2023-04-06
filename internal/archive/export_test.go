@@ -11,3 +11,7 @@ func FakeDo(do func(req *http.Request) (*http.Response, error)) (restore func())
 		httpDo = _httpDo
 	}
 }
+
+const UbuntuURL = ubuntuURL
+const UbuntuPortsURL = ubuntuPortsURL
+const UbuntuProURL = ubuntuProURL

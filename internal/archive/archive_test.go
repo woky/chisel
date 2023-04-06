@@ -10,8 +10,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -22,7 +20,7 @@ import (
 
 type httpSuite struct {
 	logf      func(string, ...interface{})
-	base      string
+	bases     []string
 	requests  []*http.Request
 	responses map[string]*http.Response
 	err       error
@@ -34,7 +32,7 @@ var _ = Suite(&httpSuite{})
 func (s *httpSuite) SetUpTest(c *C) {
 	s.logf = c.Logf
 	s.err = nil
-	s.base = "http://archive.ubuntu.com/ubuntu/"
+	s.bases = nil
 	s.requests = nil
 	s.responses = make(map[string]*http.Response)
 	s.restore = archive.FakeDo(s.Do)
@@ -44,14 +42,26 @@ func (s *httpSuite) TearDownTest(c *C) {
 	s.restore()
 }
 
-func (s *httpSuite) Do(req *http.Request) (*http.Response, error) {
-	if s.base != "" && !strings.HasPrefix(req.URL.String(), s.base) {
-		return nil, fmt.Errorf("test expected base %q, got %q", s.base, req.URL.String())
+func (s *httpSuite) checkRequestURL(reqUrl string) error {
+	if s.bases == nil {
+		return nil
 	}
+	for _, base := range s.bases {
+		if strings.HasPrefix(reqUrl, base) {
+			return nil
+		}
+	}
+	return fmt.Errorf("test expected base in %q, got %q", s.bases, reqUrl)
+}
 
+func (s *httpSuite) Do(req *http.Request) (*http.Response, error) {
+	reqUrl := req.URL.JoinPath().String()
+	if err := s.checkRequestURL(reqUrl); err != nil {
+		return nil, err
+	}
 	s.requests = append(s.requests, req)
-	s.logf("Request: %s", req.URL.String())
-	response := s.responses[path.Clean(req.URL.Path)]
+	s.logf("Request: %s", req.URL.String()) // log original URL
+	response := s.responses[reqUrl]
 	if response == nil {
 		response = &http.Response{
 			Body:       ioutil.NopCloser(strings.NewReader("Not Found")),
@@ -77,7 +87,7 @@ func (s *httpSuite) TestDoError(c *C) {
 	c.Check(err, ErrorMatches, "cannot talk to archive: BAM")
 }
 
-func (s *httpSuite) prepareArchive(suite, version, arch string, components []string) *testarchive.Release {
+func (s *httpSuite) prepareArchive(base, suite, version, arch string, components []string) *testarchive.Release {
 	release := &testarchive.Release{
 		Suite:   suite,
 		Version: version,
@@ -99,11 +109,8 @@ func (s *httpSuite) prepareArchive(suite, version, arch string, components []str
 		release.Items = append(release.Items, index)
 		release.Items = append(release.Items, &testarchive.Gzip{index})
 	}
-	base, err := url.Parse(s.base)
-	if err != nil {
-		panic(err)
-	}
-	release.Render(base.Path, s.responses)
+	s.bases = append(s.bases, base)
+	release.Render(base, s.responses)
 	return release
 }
 
@@ -149,7 +156,7 @@ var optionErrorTests = []optionErrorTest{{
 }}
 
 func (s *httpSuite) TestOptionErrors(c *C) {
-	s.prepareArchive("jammy", "22.04", "arm64", []string{"main", "universe"})
+	s.prepareArchive(archive.UbuntuURL, "jammy", "22.04", "arm64", []string{"main", "universe"})
 	cacheDir := c.MkDir()
 	for _, test := range optionErrorTests {
 		test.options.CacheDir = cacheDir
@@ -160,7 +167,7 @@ func (s *httpSuite) TestOptionErrors(c *C) {
 
 func (s *httpSuite) TestFetchPackage(c *C) {
 
-	s.prepareArchive("jammy", "22.04", "amd64", []string{"main", "universe"})
+	s.prepareArchive(archive.UbuntuURL, "jammy", "22.04", "amd64", []string{"main", "universe"})
 
 	options := archive.Options{
 		Label:      "ubuntu",
@@ -186,10 +193,7 @@ func (s *httpSuite) TestFetchPackage(c *C) {
 }
 
 func (s *httpSuite) TestFetchPortsPackage(c *C) {
-
-	s.base = "http://ports.ubuntu.com/ubuntu-ports/"
-
-	s.prepareArchive("jammy", "22.04", "arm64", []string{"main", "universe"})
+	s.prepareArchive(archive.UbuntuPortsURL, "jammy", "22.04", "arm64", []string{"main", "universe"})
 
 	options := archive.Options{
 		Label:      "ubuntu",
@@ -217,7 +221,7 @@ func (s *httpSuite) TestFetchPortsPackage(c *C) {
 func (s *httpSuite) TestFetchSecurityPackage(c *C) {
 
 	for i, suite := range []string{"jammy", "jammy-updates", "jammy-security"} {
-		release := s.prepareArchive(suite, "22.04", "amd64", []string{"main", "universe"})
+		release := s.prepareArchive(archive.UbuntuURL, suite, "22.04", "amd64", []string{"main", "universe"})
 		release.Walk(func(item testarchive.Item) error {
 			if p, ok := item.(*testarchive.Package); ok && p.Name == "mypkg1" {
 				p.Version = fmt.Sprintf("%s.%d", p.Version, i)
@@ -225,7 +229,7 @@ func (s *httpSuite) TestFetchSecurityPackage(c *C) {
 			}
 			return nil
 		})
-		release.Render("/ubuntu", s.responses)
+		release.Render(archive.UbuntuURL, s.responses)
 	}
 
 	options := archive.Options{
