@@ -23,13 +23,9 @@ import (
 type httpSuite struct {
 	logf      func(string, ...interface{})
 	base      string
-	request   *http.Request
 	requests  []*http.Request
-	response  string
-	responses map[string][]byte
+	responses map[string]*http.Response
 	err       error
-	header    http.Header
-	status    int
 	restore   func()
 }
 
@@ -39,12 +35,8 @@ func (s *httpSuite) SetUpTest(c *C) {
 	s.logf = c.Logf
 	s.err = nil
 	s.base = "http://archive.ubuntu.com/ubuntu/"
-	s.request = nil
 	s.requests = nil
-	s.response = ""
-	s.responses = make(map[string][]byte)
-	s.header = nil
-	s.status = 200
+	s.responses = make(map[string]*http.Response)
 	s.restore = archive.FakeDo(s.Do)
 }
 
@@ -57,19 +49,16 @@ func (s *httpSuite) Do(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("test expected base %q, got %q", s.base, req.URL.String())
 	}
 
-	s.request = req
 	s.requests = append(s.requests, req)
-	body := s.response
 	s.logf("Request: %s", req.URL.String())
-	if response, ok := s.responses[path.Clean(req.URL.Path)]; ok {
-		body = string(response)
+	response := s.responses[path.Clean(req.URL.Path)]
+	if response == nil {
+		response = &http.Response{
+			Body:       ioutil.NopCloser(strings.NewReader("Not Found")),
+			StatusCode: 200,
+		}
 	}
-	rsp := &http.Response{
-		Body:       ioutil.NopCloser(strings.NewReader(body)),
-		Header:     s.header,
-		StatusCode: s.status,
-	}
-	return rsp, s.err
+	return response, s.err
 }
 
 func (s *httpSuite) TestDoError(c *C) {

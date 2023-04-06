@@ -5,6 +5,8 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"path"
 	"strings"
 
@@ -139,7 +141,7 @@ func (r *Release) Content() []byte {
 	return []byte(content)
 }
 
-func (r *Release) Render(prefix string, content map[string][]byte) error {
+func (r *Release) Render(prefix string, responses map[string]*http.Response) error {
 	return r.Walk(func(item Item) error {
 		itemPath := item.Path()
 		if strings.HasPrefix(itemPath, "pool/") {
@@ -147,7 +149,10 @@ func (r *Release) Render(prefix string, content map[string][]byte) error {
 		} else {
 			itemPath = path.Join(prefix, "dists", r.Suite, itemPath)
 		}
-		content[itemPath] = item.Content()
+		responses[itemPath] = &http.Response{
+			Body:       ioutil.NopCloser(bytes.NewReader(item.Content())),
+			StatusCode: 200,
+		}
 		return nil
 	})
 }
