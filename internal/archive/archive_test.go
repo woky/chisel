@@ -55,7 +55,7 @@ func (s *httpSuite) Do(req *http.Request) (*http.Response, error) {
 	if response == nil {
 		response = &http.Response{
 			Body:       ioutil.NopCloser(strings.NewReader("Not Found")),
-			StatusCode: 200,
+			StatusCode: 404,
 		}
 	}
 	return response, s.err
