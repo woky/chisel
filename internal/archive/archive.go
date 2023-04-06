@@ -64,12 +64,6 @@ var httpClient = &http.Client{
 
 var httpDo = httpClient.Do
 
-var bulkClient = &http.Client{
-	Timeout: 5 * time.Minute,
-}
-
-var bulkDo = bulkClient.Do
-
 type ubuntuArchive struct {
 	options Options
 	indexes []*ubuntuIndex
