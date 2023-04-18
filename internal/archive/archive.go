@@ -2,6 +2,7 @@ package archive
 
 import (
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ type Archive interface {
 	Options() *Options
 	Fetch(pkg string) (io.ReadCloser, error)
 	Exists(pkg string) bool
+	Version(pkg string) (string, error)
 }
 
 type Options struct {
@@ -75,14 +77,22 @@ func (a *ubuntuArchive) Options() *Options {
 }
 
 func (a *ubuntuArchive) Exists(pkg string) bool {
-	_, _, err := a.selectPackage(pkg)
+	_, _, _, err := a.selectPackage(pkg)
 	return err == nil
 }
 
-func (a *ubuntuArchive) selectPackage(pkg string) (control.Section, *ubuntuIndex, error) {
+func (a *ubuntuArchive) Version(pkg string) (string, error) {
+	_, _, version, err := a.selectPackage(pkg)
+	return version, err
+}
+
+var NotFoundError = errors.New("package not found")
+
+func (a *ubuntuArchive) selectPackage(pkg string) (control.Section, *ubuntuIndex, string, error) {
 	var selectedVersion string
 	var selectedSection control.Section
 	var selectedIndex *ubuntuIndex
+	var err error
 	for _, index := range a.indexes {
 		section := index.packages.Section(pkg)
 		if section != nil && section.Get("Filename") != "" {
@@ -95,23 +105,25 @@ func (a *ubuntuArchive) selectPackage(pkg string) (control.Section, *ubuntuIndex
 		}
 	}
 	if selectedVersion == "" {
-		return nil, nil, fmt.Errorf("cannot find package %q in archive", pkg)
+		err = NotFoundError
 	}
-	return selectedSection, selectedIndex, nil
+	return selectedSection, selectedIndex, selectedVersion, err
 }
 
-func (a *ubuntuArchive) Fetch(pkg string) (io.ReadCloser, error) {
-	section, index, err := a.selectPackage(pkg)
+func (a *ubuntuArchive) Fetch(pkg string) (reader io.ReadCloser, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("cannot fetch package %q from archive %s: %w", pkg, a.options.Label, err)
+		}
+	}()
+	section, index, _, err := a.selectPackage(pkg)
 	if err != nil {
-		return nil, err
+		return
 	}
 	suffix := section.Get("Filename")
 	logf("Fetching %s...", suffix)
-	reader, err := index.fetch("../../"+suffix, section.Get("SHA256"))
-	if err != nil {
-		return nil, err
-	}
-	return reader, nil
+	reader, err = index.fetch("../../"+suffix, section.Get("SHA256"))
+	return
 }
 
 const ubuntuURL = "http://archive.ubuntu.com/ubuntu/"
