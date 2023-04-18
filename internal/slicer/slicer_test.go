@@ -817,6 +817,7 @@ func (s *S) TestRun(c *C) {
 					Suites:     setupArchive.Suites,
 					Components: setupArchive.Components,
 					Priority:   setupArchive.Priority,
+					Pro:        setupArchive.Pro,
 					Arch:       test.arch,
 				},
 			}

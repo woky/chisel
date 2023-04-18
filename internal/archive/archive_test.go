@@ -260,6 +260,43 @@ func (s *httpSuite) TestFetchSecurityPackage(c *C) {
 	c.Assert(read(pkg), Equals, "mypkg2 1.2 data")
 }
 
+func (s *httpSuite) TestFetchProPackage(c *C) {
+	var err error
+
+	credsDir := c.MkDir()
+	restore := archive.FakeCredentialsDir(credsDir)
+	defer restore()
+
+	s.base = "https://esm.ubuntu.com/fips-updates/ubuntu/"
+	s.prepareArchive("jammy", "22.04", "amd64", []string{"main", "universe"})
+
+	fipsOptions := archive.Options{
+		Label:      "ubuntu",
+		Version:    "22.04",
+		Arch:       "amd64",
+		Suites:     []string{"jammy"},
+		Components: []string{"main", "universe"},
+		CacheDir:   c.MkDir(),
+		Pro:        "fips",
+	}
+
+	_, err = archive.Open(&fipsOptions)
+	c.Assert(err, Equals, archive.ErrNoArchiveCredentials)
+
+	invalidOptions := archive.Options{
+		Label:      "ubuntu",
+		Version:    "22.04",
+		Arch:       "amd64",
+		Suites:     []string{"jammy"},
+		Components: []string{"main", "universe"},
+		CacheDir:   c.MkDir(),
+		Pro:        "invalid",
+	}
+
+	_, err = archive.Open(&invalidOptions)
+	c.Assert(err, ErrorMatches, "invalid pro type, supported types: fips, fips-updates")
+}
+
 func read(r io.Reader) string {
 	data, err := ioutil.ReadAll(r)
 	if err != nil {
