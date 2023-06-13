@@ -1,6 +1,7 @@
 package deb_test
 
 import (
+	"archive/tar"
 	"bytes"
 
 	. "gopkg.in/check.v1"
@@ -260,10 +261,7 @@ var extractTests = []extractTest{{
 		},
 	},
 	result: map[string]string{
-		"/etc/":     "dir 0755",
-		"/usr/":     "dir 0755",
-		"/usr/bin/": "dir 0755",
-		"/tmp/":     "dir 01777",
+		"/etc/": "dir 0755",
 	},
 }, {
 	summary: "Optional entries mixed in cannot be missing",
@@ -280,6 +278,232 @@ var extractTests = []extractTest{{
 		},
 	},
 	error: `cannot extract from package "base-files": no content at /usr/bin/hallo`,
+}, {
+	summary: "Implicit parent directories",
+	pkgdata: testutil.MakeTestDeb([]testutil.TarEntry{{
+		Header: tar.Header{
+			Name: "./a/",
+			Mode: 0701,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/b/",
+			Mode: 0702,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/b/c",
+			Mode: 0601,
+		},
+	}}),
+	options: deb.ExtractOptions{
+		Extract: map[string][]deb.ExtractInfo{
+			"/a/b/c": []deb.ExtractInfo{{Path: "/a/b/c"}},
+		},
+	},
+	result: map[string]string{
+		"/a/":    "dir 0701",
+		"/a/b/":  "dir 0702",
+		"/a/b/c": "file 0601 empty",
+	},
+}, {
+	summary: "Implicit parent directories with different target path",
+	pkgdata: testutil.MakeTestDeb([]testutil.TarEntry{{
+		Header: tar.Header{
+			Name: "./a/",
+			Mode: 0701,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./b/",
+			Mode: 0702,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./b/x",
+			Mode: 0601,
+		},
+		Content: []byte("shark"),
+	}, {
+		Header: tar.Header{
+			Name: "./c/",
+			Mode: 0703,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./c/y",
+			Mode: 0602,
+		},
+		Content: []byte("octopus"),
+	}, {
+		Header: tar.Header{
+			Name: "./d/",
+			Mode: 0704,
+		},
+	}}),
+	options: deb.ExtractOptions{
+		Extract: map[string][]deb.ExtractInfo{
+			"/b/x": []deb.ExtractInfo{{Path: "/a/x"}},
+			"/c/y": []deb.ExtractInfo{{Path: "/d/y"}},
+		},
+	},
+	result: map[string]string{
+		"/a/":  "dir 0701",
+		"/a/x": "file 0601 31fc1594",
+		"/d/":  "dir 0704",
+		"/d/y": "file 0602 5633c9b8",
+	},
+}, {
+	summary: "Implicit parent directories with a glob",
+	pkgdata: testutil.MakeTestDeb([]testutil.TarEntry{{
+		Header: tar.Header{
+			Name: "./a/",
+			Mode: 0701,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/aa/",
+			Mode: 0702,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/aa/aaa/",
+			Mode: 0703,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/aa/aaa/ffff",
+			Mode: 0601,
+		},
+	}}),
+	options: deb.ExtractOptions{
+		Extract: map[string][]deb.ExtractInfo{
+			"/a/aa/a**": []deb.ExtractInfo{{
+				Path: "/a/aa/a**",
+			}},
+		},
+	},
+	result: map[string]string{
+		"/a/":            "dir 0701",
+		"/a/aa/":         "dir 0702",
+		"/a/aa/aaa/":     "dir 0703",
+		"/a/aa/aaa/ffff": "file 0601 empty",
+	},
+}, {
+	summary: "Implicit parent directories with a glob and non-sorted tarball",
+	pkgdata: testutil.MakeTestDeb([]testutil.TarEntry{{
+		Header: tar.Header{
+			Name: "./a/b/c/d",
+			Mode: 0601,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/b/",
+			Mode: 0702,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/b/c/",
+			Mode: 0703,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/",
+			Mode: 0701,
+		},
+	}}),
+	options: deb.ExtractOptions{
+		Extract: map[string][]deb.ExtractInfo{
+			"/a/b/c/*": []deb.ExtractInfo{{
+				Path: "/a/b/c/*",
+			}},
+		},
+	},
+	result: map[string]string{
+		"/a/":      "dir 0701",
+		"/a/b/":    "dir 0702",
+		"/a/b/c/":  "dir 0703",
+		"/a/b/c/d": "file 0601 empty",
+	},
+}, {
+	summary: "Implicit parent directories with a glob and some parents missing in the tarball",
+	pkgdata: testutil.MakeTestDeb([]testutil.TarEntry{{
+		Header: tar.Header{
+			Name: "./a/b/c/d",
+			Mode: 0601,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/b/",
+			Mode: 0702,
+		},
+	}}),
+	options: deb.ExtractOptions{
+		Extract: map[string][]deb.ExtractInfo{
+			"/a/b/c/*": []deb.ExtractInfo{{
+				Path: "/a/b/c/*",
+			}},
+		},
+	},
+	result: map[string]string{
+		"/a/":      "dir 0755",
+		"/a/b/":    "dir 0702",
+		"/a/b/c/":  "dir 0755",
+		"/a/b/c/d": "file 0601 empty",
+	},
+}, {
+	summary: "Implicit parent directories with copied dirs and different modes",
+	pkgdata: testutil.MakeTestDeb([]testutil.TarEntry{{
+		Header: tar.Header{
+			Name: "./a/",
+			Mode: 0701,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/b/",
+			Mode: 0702,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/b/c/",
+			Mode: 0703,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./a/b/c/d",
+			Mode: 0601,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./e/",
+			Mode: 0704,
+		},
+	}, {
+		Header: tar.Header{
+			Name: "./e/f/",
+			Mode: 0705,
+		},
+	}}),
+	options: deb.ExtractOptions{
+		Extract: map[string][]deb.ExtractInfo{
+			"/a/b/**": []deb.ExtractInfo{{
+				Path: "/a/b/**",
+			}},
+			"/e/f/": []deb.ExtractInfo{{
+				Path: "/a/",
+			}},
+			"/e/": []deb.ExtractInfo{{
+				Path: "/a/b/c/",
+				Mode: 0706,
+			}},
+		},
+	},
+	result: map[string]string{
+		"/a/":      "dir 0705",
+		"/a/b/":    "dir 0702",
+		"/a/b/c/":  "dir 0706",
+		"/a/b/c/d": "file 0601 empty",
+	},
 }}
 
 func (s *S) TestExtract(c *C) {

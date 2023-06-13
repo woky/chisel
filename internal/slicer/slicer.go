@@ -107,14 +107,13 @@ func Run(options *RunOptions) error {
 					hasCopyright = true
 				}
 			} else {
-				targetDir := fsutil.Dir(targetPath)
-				if targetDir == "" || targetDir == "/" {
-					continue
+				parent := fsutil.Dir(targetPath)
+				for ; parent != "/"; parent = fsutil.Dir(parent) {
+					extractPackage[parent] = append(extractPackage[parent], deb.ExtractInfo{
+						Path:     parent,
+						Optional: true,
+					})
 				}
-				extractPackage[targetDir] = append(extractPackage[targetDir], deb.ExtractInfo{
-					Path:     targetDir,
-					Optional: true,
-				})
 			}
 		}
 		if !hasCopyright {
