@@ -111,6 +111,9 @@ func extractData(dataReader io.Reader, options *ExtractOptions) error {
 	}()
 
 	shouldExtract := func(pkgPath string) (globPath string, ok bool) {
+		if _, ok := options.Extract[pkgPath]; ok {
+			return "", true
+		}
 		pkgPathIsDir := pkgPath[len(pkgPath)-1] == '/'
 		for extractPath, extractInfos := range options.Extract {
 			switch {
@@ -118,8 +121,6 @@ func extractData(dataReader io.Reader, options *ExtractOptions) error {
 				if strdist.GlobPath(extractPath, pkgPath) {
 					return extractPath, true
 				}
-			case extractPath == pkgPath:
-				return "", true
 			case pkgPathIsDir:
 				for _, extractInfo := range extractInfos {
 					if strings.HasPrefix(extractInfo.Path, pkgPath) {
