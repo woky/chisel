@@ -1,6 +1,7 @@
 package deb_test
 
 import (
+	"archive/tar"
 	"bytes"
 
 	. "gopkg.in/check.v1"
@@ -280,6 +281,49 @@ var extractTests = []extractTest{{
 		},
 	},
 	error: `cannot extract from package "base-files": no content at /usr/bin/hallo`,
+}, {
+	summary: "Empty names in the archive are skipped",
+	pkgdata: testutil.MakeTestDeb([]testutil.TarEntry{
+		{Header: tar.Header{Name: ""}},
+		{Header: tar.Header{Name: "./foo"}},
+	}),
+	options: deb.ExtractOptions{
+		Extract: map[string][]deb.ExtractInfo{
+			"/foo": []deb.ExtractInfo{{Path: "/foo"}},
+		},
+	},
+	result: map[string]string{
+		"/foo": "file 0644 empty",
+	},
+}, {
+	summary: "Empty optional source paths in options are skipped",
+	pkgdata: testutil.MakeTestDeb([]testutil.TarEntry{
+		{Header: tar.Header{Name: ""}},
+		{Header: tar.Header{Name: "./foo/"}},
+		{Header: tar.Header{Name: "./foo/bar"}},
+	}),
+	options: deb.ExtractOptions{
+		Extract: map[string][]deb.ExtractInfo{
+			"": []deb.ExtractInfo{{Path: "", Optional: true}},
+		},
+	},
+	result: map[string]string{},
+}, {
+	summary: "Empty source paths in options will remain pending",
+	pkgdata: testutil.MakeTestDeb([]testutil.TarEntry{
+		{Header: tar.Header{Name: ""}},
+		{Header: tar.Header{Name: "./foo/"}},
+		{Header: tar.Header{Name: "./foo/bar"}},
+	}),
+	options: deb.ExtractOptions{
+		Extract: map[string][]deb.ExtractInfo{
+			"": []deb.ExtractInfo{
+				{Path: "", Optional: true},
+				{Path: ""},
+			},
+		},
+	},
+	error: `.*: no content at `,
 }}
 
 func (s *S) TestExtract(c *C) {
