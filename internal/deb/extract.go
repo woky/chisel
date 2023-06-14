@@ -28,22 +28,91 @@ type ExtractOptions struct {
 	Globbed   map[string][]string
 }
 
+type TargetSelector struct {
+	Source string
+	Target string
+	ID     string
+}
+
 type ExtractInfo struct {
 	Path     string
 	Mode     uint
 	Optional bool
+	ID       string
 }
 
-func checkExtractOptions(options *ExtractOptions) error {
-	for extractPath, extractInfos := range options.Extract {
-		isGlob := strings.ContainsAny(extractPath, "*?")
-		if isGlob {
-			if len(extractInfos) != 1 || extractInfos[0].Path != extractPath || extractInfos[0].Mode != 0 {
-				return fmt.Errorf("when using wildcards source and target paths must match: %s", extractPath)
+type TargetInfo struct {
+	Path      string
+	Mode      int64
+	Matches []ExtractInfo
+}
+
+type extractContext struct {
+	options      *ExtractOptions
+	extractPaths map[string][]ExtractInfo
+	extractGlobs [][]ExtractInfo
+	pendingPaths map[string]bool
+	skippedDirs  map[string]int
+}
+
+func isPathValid(path string) bool {
+	return strings.HasPrefix(path, "/") && path != "/"
+}
+
+func (ctx *extractContext) addExtractPath(sourcePath string, exInfos []ExtractInfo) error {
+	if !isPathValid(sourcePath) {
+		return fmt.Errorf("invalid source path: %#v", sourcePath)
+	}
+	if len(exInfos) == 0 {
+		return fmt.Errorf("source path %#v has no target paths", sourcePath)
+	}
+	pending := false
+	if strings.ContainsAny(sourcePath, "*?") {
+		ctx.extractGlobs = append(ctx.extractGlobs, exInfos)
+		for _, exInfo := range exInfos {
+			if exInfo.Path != sourcePath || exInfo.Mode != 0 {
+				return fmt.Errorf("when using wildcards source and target paths must match: %s", sourcePath)
+			}
+			if !pending && !exInfo.Optional {
+				pending = true
+			}
+		}
+	} else {
+		ctx.extractPaths[sourcePath] = exInfos
+		for _, exInfo := range exInfos {
+			if !isPathValid(exInfo.Path) {
+				return fmt.Errorf("invalid target path: %#v", exInfo.Path)
+			}
+			if exInfo.Optional {
+				for parent := fsutil.Dir(exInfo.Path); parent != "/"; parent = fsutil.Dir(parent) {
+					ctx.extractPaths[parent] = append(ctx.extractPaths[parent], ExtractInfo{
+						Path:     parent,
+						Optional: true,
+					})
+				}
+			} else if !pending {
+				pending = true
 			}
 		}
 	}
+	if pending {
+		ctx.pendingPaths[sourcePath] = true
+	}
 	return nil
+}
+
+func newExtractContext(options *ExtractOptions) (*extractContext, error) {
+	ctx := &extractContext{
+		options:      options,
+		extractPaths: make(map[string][]ExtractInfo),
+		pendingPaths: make(map[string]bool),
+	}
+	for extractPath, extractInfos := range options.Extract {
+		if err := ctx.addExtractPath(extractPath, extractInfos); err != nil {
+			return nil, err
+		}
+	}
+	return ctx, nil
 }
 
 func Extract(pkgReader io.Reader, options *ExtractOptions) (err error) {
@@ -55,7 +124,7 @@ func Extract(pkgReader io.Reader, options *ExtractOptions) (err error) {
 
 	logf("Extracting files from package %q...", options.Package)
 
-	err = checkExtractOptions(options)
+	ctx, err := newExtractContext(options)
 	if err != nil {
 		return err
 	}
@@ -100,47 +169,58 @@ func Extract(pkgReader io.Reader, options *ExtractOptions) (err error) {
 			dataReader = zstdReader
 		}
 	}
-	return extractData(dataReader, options)
+	return ctx.extractData(dataReader, options)
 }
 
-func extractData(dataReader io.Reader, options *ExtractOptions) error {
+type matchResult struct {
+	targets      map[string]TargetInfo
+	matchedPaths []string
+	matchedGlobs []string
+}
+
+func (ctx *extractContext) matchTargets(sourcePath string, sourceMode int64) (result matchResult) {
+	result.targets = make(map[string]TargetInfo)
+	if exInfos, ok := ctx.extractPaths[sourcePath]; ok {
+		result.matchedPaths = append(result.matchedPaths, sourcePath)
+		for _, exInfo := range exInfos {
+			dpInfo, ok := result.targets[exInfo.Path]
+			if !ok {
+				dpInfo = TargetInfo{
+					Path: exInfo.Path,
+					Mode: sourceMode,
+				}
+			}
+			if exInfo.Mode != 0 {
+				dpInfo.Mode = (sourceMode &^ 07777) | int64(exInfo.Mode&07777)
+			}
+			dpInfo.Matches = append(dpInfo.Matches, exInfo)
+			result.targets[exInfo.Path] = dpInfo
+		}
+	}
+	for _, exInfos := range ctx.extractGlobs {
+		glob := exInfos[0].Path
+		if strdist.GlobPath(glob, sourcePath) {
+			result.matchedGlobs = append(result.matchedGlobs, glob)
+			dpInfo, ok := result.targets[sourcePath]
+			if !ok {
+				dpInfo = TargetInfo{
+					Path: sourcePath,
+					Mode: sourceMode,
+				}
+			}
+			dpInfo.Matches = append(dpInfo.Matches, exInfos...)
+			result.targets[sourcePath] = dpInfo
+		}
+	}
+	return
+}
+
+func (ctx *extractContext) extractData(dataReader io.Reader, options *ExtractOptions) error {
 
 	oldUmask := syscall.Umask(0)
 	defer func() {
 		syscall.Umask(oldUmask)
 	}()
-
-	shouldExtract := func(pkgPath string) (globPath string, ok bool) {
-		if _, ok := options.Extract[pkgPath]; ok {
-			return "", true
-		}
-		pkgPathIsDir := pkgPath[len(pkgPath)-1] == '/'
-		for extractPath, extractInfos := range options.Extract {
-			switch {
-			case strings.ContainsAny(extractPath, "*?"):
-				if strdist.GlobPath(extractPath, pkgPath) {
-					return extractPath, true
-				}
-			case pkgPathIsDir:
-				for _, extractInfo := range extractInfos {
-					if strings.HasPrefix(extractInfo.Path, pkgPath) {
-						return "", true
-					}
-				}
-			}
-		}
-		return "", false
-	}
-
-	pendingPaths := make(map[string]bool)
-	for extractPath, extractInfos := range options.Extract {
-		for _, extractInfo := range extractInfos {
-			if !extractInfo.Optional {
-				pendingPaths[extractPath] = true
-				break
-			}
-		}
-	}
 
 	tarReader := tar.NewReader(dataReader)
 	for {
@@ -157,44 +237,25 @@ func extractData(dataReader io.Reader, options *ExtractOptions) error {
 			continue
 		}
 		sourcePath = sourcePath[1:]
-		globPath, ok := shouldExtract(sourcePath)
-		if !ok {
+
+		match := ctx.matchTargets(sourcePath, tarHeader.Mode)
+
+		if len(match.targets) != 0 {
+			for _, path := range match.matchedPaths {
+				delete(ctx.pendingPaths, path)
+			}
+			for _, glob := range match.matchedGlobs {
+				delete(ctx.pendingPaths, glob)
+				if ctx.options.Globbed != nil {
+					ctx.options.Globbed[glob] = append(ctx.options.Globbed[glob], sourcePath)
+				}
+			}
+		} else {
 			continue
 		}
 
-		sourceIsDir := sourcePath[len(sourcePath)-1] == '/'
-
-		//debugf("Extracting header: %#v", tarHeader)
-
-		var extractInfos []ExtractInfo
-		if globPath != "" {
-			extractInfos = options.Extract[globPath]
-			delete(pendingPaths, globPath)
-			if options.Globbed != nil {
-				options.Globbed[globPath] = append(options.Globbed[globPath], sourcePath)
-			}
-		} else {
-			extractInfos, ok = options.Extract[sourcePath]
-			if ok {
-				delete(pendingPaths, sourcePath)
-			} else {
-				// Base directory for extracted content. Relevant mainly to preserve
-				// the metadata, since the extracted content itself will also create
-				// any missing directories unaccounted for in the options.
-				err := fsutil.Create(&fsutil.CreateOptions{
-					Path: filepath.Join(options.TargetDir, sourcePath),
-					Mode: tarHeader.FileInfo().Mode(),
-					Dirs: true,
-				})
-				if err != nil {
-					return err
-				}
-				continue
-			}
-		}
-
 		var contentCache []byte
-		var contentIsCached = len(extractInfos) > 1 && !sourceIsDir && globPath == ""
+		var contentIsCached = true
 		if contentIsCached {
 			// Read and cache the content so it may be reused.
 			// As an alternative, to avoid having an entire file in
@@ -209,22 +270,14 @@ func extractData(dataReader io.Reader, options *ExtractOptions) error {
 		}
 
 		var pathReader io.Reader = tarReader
-		for _, extractInfo := range extractInfos {
+		for _, dpInfo := range match.targets {
+			tmpHeader := tar.Header{Typeflag: tarHeader.Typeflag, Mode: dpInfo.Mode}
 			if contentIsCached {
 				pathReader = bytes.NewReader(contentCache)
 			}
-			var targetPath string
-			if globPath == "" {
-				targetPath = filepath.Join(options.TargetDir, extractInfo.Path)
-			} else {
-				targetPath = filepath.Join(options.TargetDir, sourcePath)
-			}
-			if extractInfo.Mode != 0 {
-				tarHeader.Mode = int64(extractInfo.Mode)
-			}
 			err := fsutil.Create(&fsutil.CreateOptions{
-				Path: targetPath,
-				Mode: tarHeader.FileInfo().Mode(),
+				Path: filepath.Join(options.TargetDir, dpInfo.Path),
+				Mode: tmpHeader.FileInfo().Mode(),
 				Data: pathReader,
 				Link: tarHeader.Linkname,
 				Dirs: true,
@@ -232,15 +285,12 @@ func extractData(dataReader io.Reader, options *ExtractOptions) error {
 			if err != nil {
 				return err
 			}
-			if globPath != "" {
-				break
-			}
 		}
 	}
 
-	if len(pendingPaths) > 0 {
-		pendingList := make([]string, 0, len(pendingPaths))
-		for pendingPath := range pendingPaths {
+	if len(ctx.pendingPaths) > 0 {
+		pendingList := make([]string, 0, len(ctx.pendingPaths))
+		for pendingPath := range ctx.pendingPaths {
 			pendingList = append(pendingList, pendingPath)
 		}
 		if len(pendingList) == 1 {
