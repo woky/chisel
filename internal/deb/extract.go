@@ -22,11 +22,17 @@ import (
 	"github.com/canonical/chisel/internal/strdist"
 )
 
+type ConsumeData func(reader io.Reader) error
+type DataCallback func(source string, size int64) (ConsumeData, error)
+type CreateCallback func(source, target, link string, mode fs.FileMode) error
+
 type ExtractOptions struct {
 	Package   string
 	TargetDir string
 	Extract   map[string][]ExtractInfo
 	Globbed   map[string][]string
+	OnData    DataCallback
+	OnCreate  CreateCallback
 }
 
 type ExtractInfo struct {
@@ -195,13 +201,20 @@ func extractData(dataReader io.Reader, options *ExtractOptions) error {
 				return nil
 			}
 			info := dirInfos[dir]
+			source := dir
 			if info.created {
 				return nil
 			} else if info.mode == 0 {
 				info.mode = fs.ModeDir | 0755
+				source = ""
 			}
 			if err := createParents(dir); err != nil {
 				return err
+			}
+			if options.OnCreate != nil {
+				if err := options.OnCreate(source, dir, "", info.mode); err != nil {
+					return err
+				}
 			}
 			create := fsutil.CreateOptions{
 				Path: filepath.Join(options.TargetDir, dir),
@@ -215,27 +228,37 @@ func extractData(dataReader io.Reader, options *ExtractOptions) error {
 			return nil
 		}
 
-		var contentCache []byte
-		var contentIsCached = len(extractInfos) > 1 && !sourceMode.IsDir() && globPath == ""
-		if contentIsCached {
-			// Read and cache the content so it may be reused.
-			// As an alternative, to avoid having an entire file in
-			// memory at once this logic might open the first file
-			// written and copy it every time. For now, the choice
-			// is speed over memory efficiency.
-			data, err := ioutil.ReadAll(tarReader)
-			if err != nil {
-				return err
+		getReader := func() io.Reader { return tarReader }
+
+		if tarHeader.FileInfo().Mode().IsRegular() {
+			var consumeData ConsumeData
+			if options.OnData != nil {
+				var err error
+				if consumeData, err = options.OnData(sourcePath, tarHeader.Size); err != nil {
+					return err
+				}
 			}
-			contentCache = data
+			if consumeData != nil || (len(extractInfos) > 1 && globPath == "") {
+				// Read and cache the content so it may be reused.
+				// As an alternative, to avoid having an entire file in
+				// memory at once this logic might open the first file
+				// written and copy it every time. For now, the choice
+				// is speed over memory efficiency.
+				data, err := ioutil.ReadAll(tarReader)
+				if err != nil {
+					return err
+				}
+				getReader = func() io.Reader { return bytes.NewReader(data) }
+			}
+			if consumeData != nil {
+				if err := consumeData(getReader()); err != nil {
+					return err
+				}
+			}
 		}
 
-		var pathReader io.Reader = tarReader
 		origMode := tarHeader.Mode
 		for _, extractInfo := range extractInfos {
-			if contentIsCached {
-				pathReader = bytes.NewReader(contentCache)
-			}
 			var targetPath string
 			if globPath == "" {
 				targetPath = extractInfo.Path
@@ -250,10 +273,15 @@ func extractData(dataReader io.Reader, options *ExtractOptions) error {
 				tarHeader.Mode = int64(extractInfo.Mode)
 			}
 			fsMode := tarHeader.FileInfo().Mode()
+			if options.OnCreate != nil {
+				if err := options.OnCreate(sourcePath, targetPath, tarHeader.Linkname, fsMode); err != nil {
+					return err
+				}
+			}
 			err := fsutil.Create(&fsutil.CreateOptions{
 				Path: filepath.Join(options.TargetDir, targetPath),
 				Mode: fsMode,
-				Data: pathReader,
+				Data: getReader(),
 				Link: tarHeader.Linkname,
 			})
 			if err != nil {
