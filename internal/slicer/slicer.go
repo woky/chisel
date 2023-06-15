@@ -38,6 +38,7 @@ func Run(options *RunOptions) error {
 	if writeDB == nil {
 		writeDB = func(value any) error { return nil }
 	}
+	pathRec := newPathRecorder()
 
 	knownPaths["/"] = true
 
@@ -140,6 +141,11 @@ func Run(options *RunOptions) error {
 					})
 				}
 			}
+			if pathInfo.Kind == setup.GlobPath {
+				pathRec.addSliceGlob(pkgSlice, targetPath)
+			} else {
+				pathRec.addSlicePath(pkgSlice, targetPath)
+			}
 		}
 		if !hasCopyright {
 			extractPackage[copyrightPath] = append(extractPackage[copyrightPath], deb.ExtractInfo{
@@ -176,6 +182,8 @@ func Run(options *RunOptions) error {
 			Extract:   extract[slice.Package],
 			TargetDir: targetDir,
 			Globbed:   globbedPaths,
+			OnData:    pathRec.onData,
+			OnCreate:  pathRec.onCreate,
 		})
 		reader.Close()
 		packages[slice.Package] = nil
@@ -202,7 +210,7 @@ func Run(options *RunOptions) error {
 				continue
 			}
 			done[targetPath] = true
-			targetPath = filepath.Join(targetDir, targetPath)
+			localPath := filepath.Join(targetDir, targetPath)
 			targetMode := pathInfo.Mode
 			if targetMode == 0 {
 				if pathInfo.Kind == setup.DirPath {
@@ -214,7 +222,7 @@ func Run(options *RunOptions) error {
 
 			// Leverage tar handling of mode bits.
 			tarHeader := tar.Header{Mode: int64(targetMode)}
-			var fileContent io.Reader
+			var fileContent *bytes.Buffer
 			var linkTarget string
 			switch pathInfo.Kind {
 			case setup.TextPath:
@@ -228,10 +236,17 @@ func Run(options *RunOptions) error {
 			default:
 				return fmt.Errorf("internal error: cannot extract path of kind %q", pathInfo.Kind)
 			}
+			fsMode := tarHeader.FileInfo().Mode()
+
+			var data []byte
+			if fileContent != nil {
+				data = fileContent.Bytes()
+			}
+			pathRec.addTarget(targetPath, linkTarget, fsMode, data)
 
 			err := fsutil.Create(&fsutil.CreateOptions{
-				Path: targetPath,
-				Mode: tarHeader.FileInfo().Mode(),
+				Path: localPath,
+				Mode: fsMode,
 				Data: fileContent,
 				Link: linkTarget,
 				Dirs: true,
@@ -248,6 +263,7 @@ func Run(options *RunOptions) error {
 		if !pathInfos[path].Mutable {
 			return fmt.Errorf("cannot write file which is not mutable: %s", path)
 		}
+		pathRec.markMutated(path)
 		return nil
 	}
 	checkRead := func(path string) error {
@@ -292,6 +308,10 @@ func Run(options *RunOptions) error {
 		}
 	}
 
+	if err := pathRec.updateTargets(targetDir); err != nil {
+		return err
+	}
+
 	var untilDirs []string
 	for targetPath, pathInfo := range pathInfos {
 		if pathInfo.Until == setup.UntilMutate {
@@ -302,27 +322,35 @@ func Run(options *RunOptions) error {
 				targetPaths = []string{targetPath}
 			}
 			for _, targetPath := range targetPaths {
+				if strings.HasSuffix(targetPath, "/") {
+					untilDirs = append(untilDirs, targetPath)
+					continue
+				}
 				realPath, err := content.RealPath(targetPath, scripts.CheckRead)
 				if err == nil {
-					if strings.HasSuffix(targetPath, "/") {
-						untilDirs = append(untilDirs, realPath)
-					} else {
-						err = os.Remove(realPath)
-					}
+					err = os.Remove(realPath)
 				}
 				if err != nil {
 					return fmt.Errorf("cannot perform 'until' removal: %w", err)
 				}
+				pathRec.removeTarget(targetPath)
 			}
 		}
 	}
-	for _, realPath := range untilDirs {
-		err := os.Remove(realPath)
-		// The non-empty directory error is caught by IsExist as well.
-		if err != nil && !os.IsExist(err) {
+	for _, targetPath := range untilDirs {
+		realPath, err := content.RealPath(targetPath, scripts.CheckRead)
+		if err == nil {
+			err = os.Remove(realPath)
+		}
+		if err == nil {
+			pathRec.removeTarget(targetPath)
+		} else if !os.IsExist(err) {
+			// The non-empty directory error is caught by IsExist as well.
 			return fmt.Errorf("cannot perform 'until' removal: %#v", err)
 		}
 	}
+
+	pathRec.updateDB(writeDB)
 
 	return nil
 }
