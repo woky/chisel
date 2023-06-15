@@ -1,0 +1,72 @@
+package db
+
+//type packageRecord struct {
+//	Kind string
+//	Name    string
+//	Version string
+//	SHA256  string
+//	Arch    string
+//}
+//
+//type sliceRecord struct {
+//	Kind string
+//	Name string
+//}
+//
+//type pathRecrod struct {
+//	Kind string
+//	Path        string
+//	Mode        string
+//	Slices      []string
+//	SHA256      string `json:"name,omitempty"`
+//	FinalSHA256 string `json:"name,omitempty"`
+//	Size        int // encoder to discard it when (size == 0 && (Link != "" || Path.endswith("/")))
+//	Link        string `json:"name,omitempty"`
+//}
+//
+//type contentRecord struct {
+//	Kind string
+//	Slice string
+//	Path  string
+//}
+//
+//type dbImpl struct {
+//	mutableFiles map[string]*Path
+//}
+//type DB interface {
+//	//AddPackage(name string, version string)
+//	// AddSlice()
+//	RecordMutablePath(p Path) // add it to mutableFiles
+//	{
+//		mutableFiles[p.path] = nil
+//	}
+//	AddPath(p Path) {
+//		if _, ok := mutableFiles[p]; ok {
+//			mutableFiles[p] = p
+//		} else {
+//			writeToJsonWall()
+//		}
+//	}
+//	 Write(out directory) //.. check mutable, content
+//	 {
+//		 for each mutable file
+//		   write it to jsonwall ( compute final hash )
+//
+//		 write json wall to disk
+//	 }
+//}
+//
+//var db DB
+//
+//func AddPackage() {
+//}
+//
+//func AddSlice() {
+//}
+//
+////export_test.go
+//func FakeDB(mydb *DB) {
+//	db = mydb
+//}
+
+
