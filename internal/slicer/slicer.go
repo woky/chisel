@@ -11,16 +11,20 @@ import (
 	"syscall"
 
 	"github.com/canonical/chisel/internal/archive"
+	"github.com/canonical/chisel/internal/db"
 	"github.com/canonical/chisel/internal/deb"
 	"github.com/canonical/chisel/internal/fsutil"
 	"github.com/canonical/chisel/internal/scripts"
 	"github.com/canonical/chisel/internal/setup"
 )
 
+type WriteDB func(value any) error
+
 type RunOptions struct {
 	Selection *setup.Selection
 	Archives  map[string]archive.Archive
 	TargetDir string
+	WriteDB   WriteDB
 }
 
 func Run(options *RunOptions) error {
@@ -29,6 +33,11 @@ func Run(options *RunOptions) error {
 	extract := make(map[string]map[string][]deb.ExtractInfo)
 	pathInfos := make(map[string]setup.PathInfo)
 	knownPaths := make(map[string]bool)
+
+	writeDB := options.WriteDB
+	if writeDB == nil {
+		writeDB = func(value any) error { return nil }
+	}
 
 	knownPaths["/"] = true
 
@@ -66,6 +75,11 @@ func Run(options *RunOptions) error {
 
 	// Build information to process the selection.
 	for _, slice := range options.Selection.Slices {
+		pkgSlice := slice.String()
+		if err := writeDB(db.Slice{pkgSlice}); err != nil {
+			return fmt.Errorf("cannot write slice to db: %w", err)
+		}
+
 		extractPackage := extract[slice.Package]
 		if extractPackage == nil {
 			archiveName := release.Packages[slice.Package].Archive
@@ -79,6 +93,17 @@ func Run(options *RunOptions) error {
 			archives[slice.Package] = archive
 			extractPackage = make(map[string][]deb.ExtractInfo)
 			extract[slice.Package] = extractPackage
+
+			pkgInfo := archive.Info(slice.Package)
+			dbPackage := db.Package{
+				pkgInfo.Get("Package"),
+				pkgInfo.Get("Version"),
+				pkgInfo.Get("SHA256"),
+				pkgInfo.Get("Architecture"),
+			}
+			if err := writeDB(dbPackage); err != nil {
+				return fmt.Errorf("cannot write package to db: %w", err)
+			}
 		}
 		arch := archives[slice.Package].Options().Arch
 		copyrightPath := "/usr/share/doc/" + slice.Package + "/copyright"
