@@ -16,6 +16,7 @@ import (
 type Archive interface {
 	Options() *Options
 	Fetch(pkg string) (io.ReadCloser, error)
+	Info(pkg string) control.Section
 	Exists(pkg string) bool
 }
 
@@ -77,6 +78,11 @@ func (a *ubuntuArchive) Options() *Options {
 func (a *ubuntuArchive) Exists(pkg string) bool {
 	_, _, err := a.selectPackage(pkg)
 	return err == nil
+}
+
+func (a *ubuntuArchive) Info(pkg string) control.Section {
+	section, _, _ := a.selectPackage(pkg)
+	return section
 }
 
 func (a *ubuntuArchive) selectPackage(pkg string) (control.Section, *ubuntuIndex, error) {

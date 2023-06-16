@@ -12,6 +12,7 @@ import (
 	. "gopkg.in/check.v1"
 
 	"github.com/canonical/chisel/internal/archive"
+	"github.com/canonical/chisel/internal/control"
 	"github.com/canonical/chisel/internal/setup"
 	"github.com/canonical/chisel/internal/slicer"
 	"github.com/canonical/chisel/internal/testutil"
@@ -497,6 +498,14 @@ const defaultChiselYaml = `
 			components: [main, universe]
 `
 
+type testSection map[string]string
+
+var _ control.Section = (*testSection)(nil)
+
+func (s testSection) Get(key string) string {
+	return s[key]
+}
+
 type testArchive struct {
 	arch string
 	pkgs map[string][]byte
@@ -516,6 +525,15 @@ func (a *testArchive) Fetch(pkg string) (io.ReadCloser, error) {
 func (a *testArchive) Exists(pkg string) bool {
 	_, ok := a.pkgs[pkg]
 	return ok
+}
+
+func (a *testArchive) Info(pkg string) control.Section {
+	return testSection(map[string]string{
+		"Package":      pkg,
+		"Version":      "1.2",
+		"SHA256":       "589f0a0fa08b234f926c5f7c0bdf3fb41fdc004661f7921a270c6175a4fb8edb",
+		"Architecture": "all",
+	})
 }
 
 func (s *S) TestRun(c *C) {
