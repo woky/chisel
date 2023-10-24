@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	pgppacket "github.com/ProtonMail/go-crypto/openpgp/packet"
 	"gopkg.in/yaml.v3"
 
 	"github.com/canonical/chisel/internal/deb"
@@ -31,7 +32,8 @@ type Archive struct {
 	Version    string
 	Suites     []string
 	Components []string
-	PublicKeys openpgp.KeyRing
+	// map of public keys by issuer ID
+	PublicKeys map[uint64][]*pgppacket.PublicKey
 }
 
 // Package holds a collection of slices that represent parts of themselves.
@@ -418,14 +420,27 @@ func parseRelease(baseDir, filePath string, data []byte) (*Release, error) {
 		return nil, fmt.Errorf("%s: no archives defined", fileName)
 	}
 
-	pubKeysByName := make(map[string]openpgp.EntityList, 0)
+	pubKeysByName := make(map[string][]*pgppacket.PublicKey, 0)
 
 	for pubKeysName, pubKeyArmored := range yamlVar.PublicKeys {
-		pubKeys, err := openpgp.ReadArmoredKeyRing(strings.NewReader(pubKeyArmored))
+		keyring, err := openpgp.ReadArmoredKeyRing(strings.NewReader(pubKeyArmored))
 		if err != nil {
-			return nil, fmt.Errorf("%s: cannot parse public key %q: %w", fileName, pubKeysName, err)
+			return nil, fmt.Errorf("%s: cannot parse public keyring %q: %w", fileName, pubKeysName, err)
 		}
-		pubKeysByName[pubKeysName] = pubKeys
+		pubKeys := make([]*pgppacket.PublicKey, 0, len(keyring))
+		for _, e := range keyring {
+			if e.PrimaryKey.CanSign() {
+				pubKeys = append(pubKeys, e.PrimaryKey)
+			}
+			for _, sk := range e.Subkeys {
+				if sk.PublicKey.CanSign() {
+					pubKeys = append(pubKeys, sk.PublicKey)
+				}
+			}
+		}
+		if len(pubKeys) == 0 {
+			return nil, fmt.Errorf("%s: public keyring %q has no public keys")
+		}
 	}
 
 	for archiveName, details := range yamlVar.Archives {
@@ -442,17 +457,15 @@ func parseRelease(baseDir, filePath string, data []byte) (*Release, error) {
 		if len(details.Components) == 0 {
 			return nil, fmt.Errorf("%s: archive %q missing components field", fileName, archiveName)
 		}
-		var archivePubKeysTmp openpgp.EntityList
+		var archivePubKeys map[uint64][]*pgppacket.PublicKey
 		for _, pubKeysName := range details.PublicKeys {
 			pubKeys := pubKeysByName[pubKeysName]
 			if pubKeys == nil {
 				return nil, fmt.Errorf("%s: archive %q references unknown public key %q", fileName, archiveName, pubKeysName)
 			}
-			archivePubKeysTmp = append(archivePubKeysTmp, pubKeys...)
-		}
-		var archivePubKeys openpgp.KeyRing
-		if archivePubKeysTmp != nil {
-			archivePubKeys = archivePubKeysTmp
+			for _, pk := range pubKeys {
+				archivePubKeys[pk.KeyId] = append(archivePubKeys[pk.KeyId], pk)
+			}
 		}
 		if len(yamlVar.Archives) == 1 {
 			details.Default = true
